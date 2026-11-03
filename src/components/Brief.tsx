@@ -5,6 +5,7 @@ import type { Brief as BriefT } from "@/lib/brief";
 import type { ViewId } from "@/lib/tools";
 
 type Props = {
+  dataRevision?: number;
   onShow: (view: ViewId, ids: string[]) => void;
   onReviewOverdue: () => void;
 };
@@ -17,12 +18,15 @@ function money(v: number, cur: string) {
   }
 }
 
-export function Brief({ onShow, onReviewOverdue }: Props) {
+export function Brief({ onShow, onReviewOverdue, dataRevision = 0 }: Props) {
   const [brief, setBrief] = useState<BriefT | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const initialRevision = useRef(dataRevision);
+  const [briefRevision, setBriefRevision] = useState(dataRevision);
+  const stale = dataRevision > briefRevision;
   // One row of cards is visible by default; the row holds as many as fit.
   const itemsRef = useRef<HTMLDivElement>(null);
   const [perRow, setPerRow] = useState(3);
@@ -50,7 +54,10 @@ export function Brief({ onShow, onReviewOverdue }: Props) {
     let alive = true;
     fetchBrief()
       .then((b) => {
-        if (alive) setBrief(b);
+        if (alive) {
+          setBrief(b);
+          setBriefRevision(initialRevision.current);
+        }
       })
       .catch((e: unknown) => {
         if (alive) setError(e instanceof Error ? e.message : "Failed to load brief");
@@ -64,10 +71,12 @@ export function Brief({ onShow, onReviewOverdue }: Props) {
   }, [fetchBrief]);
 
   const load = async () => {
+    const revision = dataRevision;
     setLoading(true);
     setError(null);
     try {
       setBrief(await fetchBrief());
+      setBriefRevision(revision);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load brief");
     } finally {
@@ -99,13 +108,14 @@ export function Brief({ onShow, onReviewOverdue }: Props) {
           <div className="brief-kicker">{today()}</div>
           <h2>{loading && !brief ? "Reading your account…" : brief?.headline ?? (error ? "The brief could not be loaded" : "")}</h2>
           {error && <div className="err small">{brief ? "Couldn’t refresh the brief. Showing the previous summary." : "The account brief is temporarily unavailable. You can still work with your records below."}</div>}
+          {stale && <div className="brief-stale small">Account changed. Refresh this brief to update its summary.</div>}
         </div>
         <div className="row">
           {m && m.overdueInvoicesTotal > 0 && (
             <button className="primary brief-review" onClick={onReviewOverdue}>Review overdue invoices <span aria-hidden>→</span></button>
           )}
           <button className="ghost small" onClick={() => void load()} disabled={loading}>
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading ? "Refreshing…" : stale ? "Refresh brief" : "Refresh"}
           </button>
           <button className="ghost small" aria-expanded={!collapsed} aria-controls="brief-content" onClick={() => setCollapsed((c) => !c)}>
             {collapsed ? "Expand" : "Collapse"}

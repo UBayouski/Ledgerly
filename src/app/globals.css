@@ -798,6 +798,102 @@ code {
 }
 .approval .row {
   gap: 8px;
+  flex-wrap: wrap;
+}
+.reminder-facts {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+.reminder-facts > div {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 10px;
+}
+.reminder-facts dt,
+.reminder-subject > span,
+.reminder-caption {
+  color: var(--cream-2);
+}
+.reminder-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.reminder-facts small,
+.reminder-recipient,
+.reminder-recipient > span {
+  display: block;
+}
+.reminder-facts small {
+  font-size: 10px;
+  color: var(--cream-3);
+  margin-top: 3px;
+}
+.reminder-recipient + .reminder-recipient {
+  margin-top: 8px;
+}
+.reminder-message {
+  border: 1px solid var(--ink-rule);
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--ink-surface);
+  overflow-wrap: anywhere;
+}
+.reminder-subject {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.reminder-note {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.reminder-caption,
+.reminder-preview-status p {
+  margin: 10px 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.reminder-result {
+  padding: 8px 10px 12px;
+  line-height: 1.5;
+}
+.reminder-result-reference {
+  font-weight: 500;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+.tool-refresh {
+  padding: 0 10px 10px;
+  color: var(--cream-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.tool-card:not(:has(.reminder-result)) .tool-refresh {
+  padding-top: 6px;
+}
+.brief-stale {
+  margin-top: 6px;
+  color: var(--amber-bright);
+}
+.invoice-action-summary {
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+.invoice-action-heading {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.invoice-action-shipping {
+  font-size: 11px;
+}
+.reminder-preview > .reminder-message + .reminder-message {
+  margin-top: 12px;
+}
+.state-output-denied .dot,
+.state-approval-responded:has(.reminder-result) .dot {
+  animation: none;
 }
 .chat-input {
   display: flex;
@@ -1143,8 +1239,9 @@ code {
   flex-shrink: 0;
 }
 .chat {
-  box-shadow: inset 2px 0 0 var(--margin-bright);
-  border-left: 1px solid var(--ink-rule);
+  /* A border, not an inset shadow: child bands with their own background cannot cover it. */
+  box-shadow: none;
+  border-left: 2px solid var(--margin-bright);
 }
 .chat-head {
   align-items: flex-start;
@@ -1240,8 +1337,9 @@ code {
 }
 @media (max-width: 1100px) {
   .chat {
-    box-shadow: inset 0 2px 0 var(--margin-bright);
+    box-shadow: none;
     border-left: none;
+    border-top: 2px solid var(--margin-bright);
   }
 }
 
@@ -1640,5 +1738,43 @@ code {
   /* The refresh time crowds the brand on phones; Refresh alone is enough. */
   .topbar .row > span {
     display: none;
+  }
+}
+
+/* Invoice and transaction rows are 58px; centre single-line cells to match the two-line customer block */
+.tall-row .ag-cell {
+  line-height: 56px;
+}
+.tall-row .ag-cell .invoice-customer {
+  line-height: 1.5;
+}
+
+/* An action PayPal will refuse: say so before the user approves it */
+.reminder-blocked {
+  margin: 8px 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: rgba(255, 138, 122, 0.12);
+  border: 1px solid rgba(255, 138, 122, 0.35);
+  color: var(--red-bright);
+  font-size: 12.5px;
+}
+
+/* Phones: the brief actions sit under the headline; the primary spans the row,
+   Refresh and Collapse share the line below it instead of orphaning Collapse */
+@media (max-width: 700px) {
+  .brief-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .brief-head > .row {
+    width: 100%;
+    padding-top: 0;
+    gap: 8px;
+  }
+  .brief-review {
+    flex: 1 1 100%;
+    justify-content: space-between;
   }
 }

@@ -1,17 +1,20 @@
 import { createElement } from "react";
 import type { ColDef, ICellRendererParams, ValueFormatterParams } from "ag-grid-community";
-import type { InvoiceRow } from "@/lib/data";
+import type { InvoiceRow, TransactionRow } from "@/lib/data";
 import type { ViewId } from "@/lib/tools";
+
+export function formatMoney(value: number | string, currency = "USD") {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(Number(value));
+  } catch {
+    return `${Number(value).toFixed(2)} ${currency}`;
+  }
+}
 
 const money = (p: ValueFormatterParams) => {
   const v = p.value;
   if (v === null || v === undefined || v === "") return "";
-  const cur = (p.data?.currency as string) || "USD";
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(Number(v));
-  } catch {
-    return `${Number(v).toFixed(2)} ${cur}`;
-  }
+  return formatMoney(v, (p.data?.currency as string) || "USD");
 };
 
 const dateTime = (p: ValueFormatterParams) => {
@@ -30,6 +33,11 @@ const statusLabel = (p: ValueFormatterParams) => {
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
 
+const badge = (p: ICellRendererParams) => p.value ? createElement("span", {
+  className: `invoice-badge status-${String(p.value).toLowerCase().replace(/\s+/g, "-")}`,
+  title: p.valueFormatted ?? String(p.value),
+}, p.valueFormatted ?? p.value) : null;
+
 const num: Partial<ColDef> = {
   filter: "agNumberColumnFilter",
   type: "rightAligned",
@@ -46,17 +54,21 @@ export const NUMBER_FIELDS: Record<ViewId, Set<string>> = {
 
 export const COLUMNS: Record<ViewId, ColDef[]> = {
   transactions: [
-    { field: "date", headerName: "Date", valueFormatter: dateTime, width: 150, sort: "desc" },
+    { field: "date", headerName: "Date (UTC)", valueFormatter: dateTime, width: 160, sort: "desc" },
     { field: "kind", headerName: "Type", width: 130 },
-    { field: "statusLabel", headerName: "Status", width: 120, valueFormatter: statusLabel, cellClass: (p) => `status status-${String(p.value).toLowerCase().replace(/\s+/g, "-")}` },
-    { field: "payerName", headerName: "Customer", width: 170 },
-    { field: "payerEmail", headerName: "Email", width: 200 },
-    { field: "amount", headerName: "Gross", ...num },
-    { field: "fee", headerName: "Fee", ...num, width: 110 },
-    { field: "net", headerName: "Net", ...num },
-    { field: "subject", headerName: "Subject", flex: 1, minWidth: 160 },
-    { field: "invoiceId", headerName: "Invoice", width: 130 },
-    { field: "id", headerName: "Transaction ID", width: 190 },
+    { field: "statusLabel", headerName: "Status", width: 104, valueFormatter: statusLabel, cellRenderer: badge },
+    { field: "payerName", headerName: "Customer", flex: 1, minWidth: 140,
+      cellRenderer: (p: ICellRendererParams<TransactionRow>) => createElement("div", { className: "invoice-customer" },
+        createElement("span", null, p.data?.payerName || p.data?.payerEmail || "Unknown customer"),
+        createElement("span", { className: "invoice-email" }, p.data?.payerEmail)),
+    },
+    { field: "payerEmail", headerName: "Email", width: 200, hide: true },
+    { field: "amount", headerName: "Gross", ...num, width: 110 },
+    { field: "fee", headerName: "Fee", ...num, width: 88 },
+    { field: "net", headerName: "Net", ...num, width: 110 },
+    { field: "subject", headerName: "Subject", width: 240, hide: true },
+    { field: "invoiceId", headerName: "Invoice", width: 130, hide: true },
+    { field: "id", headerName: "Transaction ID", width: 190, hide: true },
   ],
   invoices: [
     { field: "number", headerName: "Invoice #", width: 104 },
@@ -81,7 +93,7 @@ export const COLUMNS: Record<ViewId, ColDef[]> = {
       sort: "desc",
       filter: "agNumberColumnFilter",
       type: "rightAligned",
-      width: 116,
+      width: 128,
       cellClass: (p) => (Number(p.value) > 0 ? "ag-right-aligned-cell status status-overdue" : "ag-right-aligned-cell"),
     },
     { field: "recipientEmail", headerName: "Email", width: 210, hide: true },
@@ -92,34 +104,45 @@ export const COLUMNS: Record<ViewId, ColDef[]> = {
     { field: "id", headerName: "Invoice ID", width: 200, hide: true },
   ],
   disputes: [
-    { field: "created", headerName: "Opened", valueFormatter: dateTime, width: 150, sort: "desc" },
-    { field: "status", headerName: "Status", width: 230, valueFormatter: statusLabel, cellClass: (p) => `status status-${String(p.value).toLowerCase()}` },
-    { field: "stage", headerName: "Stage", width: 140 },
-    { field: "reason", headerName: "Reason", width: 240 },
-    { field: "amount", headerName: "Amount", ...num },
-    { field: "responseDue", headerName: "Respond by", valueFormatter: dateTime, width: 150 },
+    { field: "created", headerName: "Opened (UTC)", valueFormatter: dateTime, width: 170, hide: true },
+    { field: "status", headerName: "Status", width: 230, valueFormatter: statusLabel, cellRenderer: badge },
+    { field: "stage", headerName: "Stage", width: 140, valueFormatter: statusLabel, hide: true },
+    { field: "reason", headerName: "Reason", flex: 1, minWidth: 180, valueFormatter: statusLabel },
+    { field: "amount", headerName: "Amount", ...num, width: 120 },
+    { field: "responseDue", headerName: "Respond by", headerTooltip: "Response deadline (UTC)", valueFormatter: dateTime, width: 170, sort: "asc",
+      comparator: (a, b, nodeA, nodeB) => {
+        const deadline = (value: string, status: string) => {
+          const parsed = Date.parse(value);
+          return status === "RESOLVED" || !Number.isFinite(parsed) ? Infinity : parsed;
+        };
+        const left = deadline(a, nodeA.data?.status);
+        const right = deadline(b, nodeB.data?.status);
+        return left === right ? 0 : left < right ? -1 : 1;
+      },
+    },
     {
       field: "daysToRespond",
       headerName: "Days left",
       filter: "agNumberColumnFilter",
       type: "rightAligned",
       width: 110,
-      cellClass: (p) => (Number(p.value) <= 3 ? "status status-overdue" : ""),
+      valueFormatter: (p) => p.data?.responseDue && p.data?.status !== "RESOLVED" ? String(p.value) : "—",
+      cellClass: (p) => `ag-right-aligned-cell${p.data?.responseDue && p.data?.status !== "RESOLVED" && Number(p.value) <= 3 ? " status status-overdue" : ""}`,
     },
-    { field: "transactionId", headerName: "Transaction", width: 190 },
-    { field: "outcome", headerName: "Outcome", width: 150 },
-    { field: "id", headerName: "Dispute ID", width: 190 },
+    { field: "transactionId", headerName: "Transaction", width: 190, hide: true },
+    { field: "outcome", headerName: "Outcome", width: 150, valueFormatter: statusLabel, hide: true },
+    { field: "id", headerName: "Dispute ID", width: 190, hide: true },
   ],
   catalog: [
-    { field: "kind", headerName: "Kind", width: 100 },
-    { field: "name", headerName: "Name", width: 240 },
-    { field: "status", headerName: "Status", width: 120, valueFormatter: statusLabel, cellClass: (p) => (p.value ? `status status-${String(p.value).toLowerCase()}` : "") },
+    { field: "kind", headerName: "Kind", width: 100, valueFormatter: statusLabel },
+    { field: "name", headerName: "Name", flex: 1, minWidth: 200, sort: "asc" },
+    { field: "status", headerName: "Status", width: 120, valueFormatter: statusLabel, cellRenderer: badge },
     { field: "price", headerName: "Price", ...num },
     { field: "interval", headerName: "Interval", width: 120 },
-    { field: "description", headerName: "Description", flex: 1, minWidth: 200 },
-    { field: "productId", headerName: "Product", width: 200 },
-    { field: "created", headerName: "Created", valueFormatter: dateTime, width: 150 },
-    { field: "id", headerName: "ID", width: 200 },
+    { field: "description", headerName: "Description", width: 280, hide: true },
+    { field: "productId", headerName: "Product", width: 200, hide: true },
+    { field: "created", headerName: "Created (UTC)", valueFormatter: dateTime, width: 170, hide: true },
+    { field: "id", headerName: "ID", width: 200, hide: true },
   ],
 };
 

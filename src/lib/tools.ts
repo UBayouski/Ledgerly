@@ -1,6 +1,9 @@
 import { tool, type Tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { getToolkit } from "./paypal";
+import { parseToolResult } from "./tool-result";
+import { needsApproval } from "./tool-policy";
+export { needsApproval } from "./tool-policy";
 
 /**
  * The PayPal Agent Toolkit ships tools in the AI SDK v4 shape
@@ -10,32 +13,11 @@ import { getToolkit } from "./paypal";
  * human approval before they run.
  */
 
-/**
- * Read-only tool name prefixes. Everything else the toolkit exposes changes
- * money or state in PayPal and pauses for explicit human approval. An
- * allowlist (rather than a list of risky tools) means a tool added by a
- * toolkit upgrade is gated by default.
- */
-const READ_ONLY_PREFIXES = ["list_", "get_", "show_", "search_", "generate_"];
-
-export function needsApproval(name: string): boolean {
-  return !READ_ONLY_PREFIXES.some((prefix) => name.startsWith(prefix));
-}
-
 type LegacyTool = {
   description?: string;
   parameters: unknown;
   execute?: (args: unknown, options?: unknown) => Promise<unknown>;
 };
-
-function parseResult(raw: unknown): unknown {
-  if (typeof raw !== "string") return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
-}
 
 export function paypalTools(): ToolSet {
   const legacy = getToolkit().getTools() as unknown as Record<string, LegacyTool>;
@@ -49,17 +31,17 @@ export function paypalTools(): ToolSet {
       execute: async (input: unknown, options) => {
         if (!t.execute) throw new Error(`${name} has no executor`);
         const raw = await t.execute(input, { toolCallId: options.toolCallId, messages: [] });
-        const parsed = parseResult(raw);
+        const parsed = parseToolResult(raw);
         // Trim very large payloads so a 100-row listing does not flood context.
         const text = JSON.stringify(parsed);
-        if (text.length > 60_000) {
+        if (text && text.length > 60_000) {
           return {
             truncated: true,
             note: "Result truncated to 60k characters",
             preview: text.slice(0, 60_000),
           };
         }
-        return parsed;
+        return parsed === undefined ? null : parsed;
       },
     }) as Tool;
   }

@@ -85,7 +85,7 @@ function GridEmpty({ filtered, view, loadFailed, onClear }: {
 }) {
   return (
     <div className="grid-empty">
-      <strong>{loadFailed ? "Records unavailable" : filtered ? `No matching ${VIEW_LABELS[view].toLowerCase()}` : `No ${VIEW_LABELS[view].toLowerCase()} yet`}</strong>
+      <strong>{loadFailed ? "Records unavailable" : filtered ? `No matching ${view === "catalog" ? "products or plans" : VIEW_LABELS[view].toLowerCase()}` : view === "disputes" ? "No disputes to review" : `No ${view === "catalog" ? "products or plans" : VIEW_LABELS[view].toLowerCase()} yet`}</strong>
       <p>{loadFailed ? "Use Retry above to load your records." : filtered ? "Try another search or clear the current filters." : EMPTY_DETAILS[view]}</p>
       {!loadFailed && filtered && <button className="ghost" onClick={onClear}>Clear search and filters</button>}
     </div>
@@ -112,10 +112,14 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
         onClick: () => { if (p.data) setInvoiceId(p.data.id); },
       }, p.value || "View invoice"),
     };
-    return view === "invoices" && column.hide ? { ...column, hide: !allColumns } : column;
+    return column.hide ? { ...column, hide: !allColumns } : column;
   }), [view, allColumns]);
   const defaultColDef = useMemo<ColDef>(
-    () => ({ sortable: true, filter: true, resizable: true, floatingFilter: false, suppressHeaderMenuButton: false }),
+    () => ({
+      sortable: true, filter: true, resizable: true, floatingFilter: false, suppressHeaderMenuButton: false,
+      getQuickFilterText: (p) => `${p.value ?? ""} ${String(p.value ?? "").replace(/_/g, " ")}`,
+      tooltipValueGetter: (p) => p.valueFormatted ?? String(p.value ?? ""),
+    }),
     [],
   );
 
@@ -235,16 +239,16 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
       <div className="grid-toolbar">
         <input
           className="quick"
-          placeholder={`Search ${view}`}
+          placeholder={`Search ${view === "catalog" ? "products and plans" : view}`}
           value={quickFilter}
-          aria-label={`Search ${view}`}
+          aria-label={`Search ${view === "catalog" ? "products and plans" : view}`}
           onChange={(e) => {
             setQuickFilter(e.target.value);
             apiRef.current?.setGridOption("quickFilterText", e.target.value);
           }}
         />
         <span className="muted small">{loading ? "Loading…" : context && context.visibleRows !== rows.length ? `${context.visibleRows} of ${rows.length} records` : `${rows.length} records`}</span>
-        {view === "invoices" && (
+        {COLUMNS[view].some((column) => column.hide) && (
           <button className="ghost column-toggle" aria-pressed={allColumns} onClick={() => setAllColumns((v) => !v)}>
             {allColumns ? "Show fewer columns" : "Show all columns"}
           </button>
@@ -262,7 +266,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           selectionColumnDef={{ width: 42, minWidth: 42, maxWidth: 42, resizable: false, cellClass: "invoice-selection-cell" }}
           quickFilterText={quickFilter}
           includeHiddenColumnsInQuickFilter
-          rowHeight={view === "invoices" ? 58 : undefined}
+          rowHeight={view === "invoices" || view === "transactions" ? 58 : undefined}
           loading={loading && rows.length === 0}
           animateRows
           onGridReady={onGridReady}
@@ -282,6 +286,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           rowClassRules={{
             "row-highlight": (p) => highlight.current.has(String((p.data as Row | undefined)?.id)),
             "invoice-row": () => view === "invoices",
+            "tall-row": () => view === "invoices" || view === "transactions",
           }}
           suppressOverlays={["noRows", "noMatchingRows"]}
         />

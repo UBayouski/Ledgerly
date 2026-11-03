@@ -14,6 +14,11 @@ import type { ViewId } from "@/lib/tools";
 import type { ShowCommand } from "./Grid";
 import { Markdown } from "./Markdown";
 import { VIEW_LABELS } from "./columns";
+import { InvoiceActionPreview } from "./InvoiceActionPreview";
+import { reminderInput, type ReminderInvoice } from "@/lib/reminder-preview";
+import { blockedReason, invoiceAction, requiresInvoiceRecipient } from "@/lib/invoice-actions";
+import { cleanPayPalError } from "@/lib/tool-result";
+import { completedActions, needsApproval } from "@/lib/tool-policy";
 
 export type ChatContext = { view: ViewId; selectedIds: string[]; rowCount: number; visibleRowCount: number; filters: string[] };
 
@@ -22,6 +27,7 @@ export type ChatController = {
   show: (view: ViewId, cmd: ShowCommand) => Promise<{ ok: boolean; view: ViewId; visibleRows: number; highlighted: number; unknownFields: string[] }>;
   snapshot: (view: ViewId, limit: number, onlySelected: boolean) => Promise<{ view: ViewId; rows: unknown[]; total: number }>;
   getContext: () => ChatContext;
+  afterActions: (names: string[]) => Promise<boolean>;
 };
 
 type Suggestion = { label: string; detail: string; prompt: string };
@@ -72,47 +78,111 @@ function Params({ input }: { input: unknown }) {
 function ToolCard({
   part,
   onApprove,
+  interrupted,
+  refreshState,
 }: {
   part: Extract<UIMessage["parts"][number], { type: `tool-${string}` } | { type: "dynamic-tool" }>;
-  onApprove: (id: string, approved: boolean) => void;
+  onApprove: (id: string, approved: boolean) => Promise<void>;
+  interrupted: boolean;
+  refreshState?: "refreshed" | "failed";
 }) {
   const name = getToolName(part);
   const state = part.state;
   const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState<{ id: string; invoice?: ReminderInvoice; error?: string } | null>(null);
+  const [retry, setRetry] = useState(0);
+  const [decision, setDecision] = useState<boolean | null>(null);
+  const decisionLock = useRef(false);
+  const [decisionError, setDecisionError] = useState("");
+  const action = invoiceAction(name);
+  const invoiceTool = Boolean(action);
+  const input = reminderInput("input" in part ? part.input : undefined);
+  const awaitingApproval = state === "approval-requested";
+  const invoice = preview?.id === input.invoiceId ? preview.invoice : undefined;
+  const previewError = preview?.id === input.invoiceId ? preview.error : undefined;
+  const missingRecipient = invoice && requiresInvoiceRecipient(name, input.sendToRecipient) && !invoice.recipients.some((recipient) => recipient.email);
+  const missingPayment = name === "record_payment_for_invoice" && (!input.payment.amount || !input.payment.currency || !input.payment.method);
+  const blocked = invoice ? blockedReason(name, invoice.status) : undefined;
+  const actionButton = name === "delete_invoice" && invoice?.status === "DRAFT" ? "Delete draft" : action?.button || "Approve";
+
+  useEffect(() => {
+    if (!invoiceTool || !awaitingApproval || !input.invoiceId) return;
+    const abort = new AbortController();
+    void fetch(`/api/invoices/${encodeURIComponent(input.invoiceId)}/preview`, { cache: "no-store", signal: abort.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Could not load invoice");
+        const data = await response.json() as { invoice: ReminderInvoice };
+        if (!abort.signal.aborted) setPreview({ id: input.invoiceId, invoice: data.invoice });
+      })
+      .catch(() => { if (!abort.signal.aborted) setPreview({ id: input.invoiceId, error: "Couldn’t load the invoice details. Retry before confirming this action." }); });
+    return () => abort.abort();
+  }, [invoiceTool, awaitingApproval, input.invoiceId, retry]);
+
+  const decide = async (approved: boolean) => {
+    if (state !== "approval-requested" || decisionLock.current) return;
+    decisionLock.current = true;
+    setDecision(approved);
+    setDecisionError("");
+    try {
+      await onApprove(part.approval.id, approved);
+    } catch {
+      decisionLock.current = false;
+      setDecision(null);
+      setDecisionError("Couldn’t record your decision. Please try again.");
+    }
+  };
   const isUi = name === "show_view" || name === "get_grid_snapshot";
   const label =
     state === "approval-requested"
       ? "Needs your approval"
       : state === "approval-responded"
         ? part.approval.approved
-          ? "Approved, running…"
-          : "Denied"
+          ? action ? interrupted ? "Not confirmed" : action.pending : "Approved, running…"
+          : invoiceTool ? "Not applied" : "Cancelled"
         : state === "output-denied"
-          ? "Denied"
+          ? invoiceTool ? "Not applied" : "Cancelled"
           : state === "output-error"
             ? "Failed"
             : state === "output-available"
-              ? "Done"
+              ? action?.success || "Done"
               : "Running…";
   return (
     <div className={`tool-card state-${state}${isUi ? " ui" : ""}`}>
-      <button className="tool-head" onClick={() => setOpen((o) => !o)}>
+      <button className="tool-head" aria-expanded={state === "approval-requested" || open} onClick={() => setOpen((o) => !o)}>
         <span className="dot" />
-        <span className="tool-name">{humanTool(name)}</span>
+        <span className="tool-name">{action?.title || humanTool(name)}</span>
         <span className="tool-state">{label}</span>
       </button>
       {state === "approval-requested" && (
         <div className="approval">
-          <Params input={part.input} />
+          {invoiceTool ? invoice ? <InvoiceActionPreview name={name} input={part.input} invoice={invoice} /> : (
+            <div className="reminder-preview-status">
+              <p>{!input.invoiceId ? "This action has no invoice reference. Cancel it and ask Copilot to prepare it again." : previewError || "Loading invoice and customer details for review…"}</p>
+              {previewError && <button className="ghost small" onClick={() => { setPreview(null); setRetry((value) => value + 1); }}>Retry preview</button>}
+            </div>
+          ) : <Params input={part.input} />}
+          {missingRecipient && <p className="reminder-caption">No recipient email is available to review. Cancel and check the invoice in PayPal.</p>}
+          {missingPayment && <p className="reminder-caption">The payment amount, currency, and method must be specified for review. Cancel this proposal and ask Copilot to include them.</p>}
+          {blocked && <p className="reminder-blocked" role="status">{blocked}</p>}
           <div className="row">
-            <button className="primary" onClick={() => onApprove(part.approval.id, true)}>
-              Approve
+            <button className="primary" disabled={decision !== null || (invoiceTool && (!invoice || Boolean(missingRecipient) || missingPayment || Boolean(blocked)))} onClick={() => void decide(true)}>
+              {decision === true ? "Confirming…" : actionButton}
             </button>
-            <button className="ghost" onClick={() => onApprove(part.approval.id, false)}>
-              Deny
+            <button className="ghost" disabled={decision !== null} onClick={() => void decide(false)}>
+              {decision === false ? "Cancelling…" : name === "cancel_sent_invoice" || name === "delete_invoice" ? "Keep invoice" : "Cancel"}
             </button>
           </div>
+          {decisionError && <p className="err" role="alert">{decisionError}</p>}
         </div>
+      )}
+      {action && state !== "approval-requested" && (
+        <div className="reminder-result">
+          {input.invoiceId && <div className="reminder-result-reference">Invoice {invoice?.number || input.invoiceId}</div>}
+          {state === "output-available" ? action.result : state === "output-denied" || (state === "approval-responded" && !part.approval.approved) ? "Request dismissed. No change was made to the invoice." : state === "output-error" ? (part.errorText ? `PayPal refused: ${cleanPayPalError(part.errorText)}` : "PayPal did not confirm this action. Check the invoice before trying again.") : state === "approval-responded" && interrupted ? "PayPal did not confirm this action. Check the invoice before trying again." : state === "approval-responded" ? "Applying your approved action in PayPal…" : "Preparing this action for your review…"}
+        </div>
+      )}
+      {state === "output-available" && needsApproval(name) && (
+        <div className="tool-refresh">{refreshState === "refreshed" ? "Records refreshed." : refreshState === "failed" ? "Action completed, but records could not refresh. Use Refresh in the dashboard to try again." : "Refreshing records…"}</div>
       )}
       {open && state !== "approval-requested" && (
         <div className="tool-body">
@@ -151,6 +221,8 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
   }, [controller]);
   const [input, setInput] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
+  const refreshedCalls = useRef(new Set<string>());
+  const [refreshStates, setRefreshStates] = useState<Record<string, "refreshed" | "failed">>({});
 
   const transport = useMemo(
     () =>
@@ -181,6 +253,19 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
       }
     },
   });
+
+  useEffect(() => {
+    const ctl = latest.controller;
+    if (!ctl) return;
+    const actions = completedActions(messages, refreshedCalls.current);
+    if (!actions.length) return;
+    void ctl.afterActions(actions.map((action) => action.name))
+      .catch(() => false)
+      .then((ok) => setRefreshStates((previous) => ({
+        ...previous,
+        ...Object.fromEntries(actions.map((action) => [action.id, ok ? "refreshed" : "failed"])),
+      })));
+  }, [messages]);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
@@ -259,7 +344,9 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
                   <ToolCard
                     key={i}
                     part={part}
-                    onApprove={(id, approved) => void addToolApprovalResponse({ id, approved })}
+                    interrupted={status === "error"}
+                    refreshState={refreshStates[part.toolCallId]}
+                    onApprove={async (id, approved) => { await addToolApprovalResponse({ id, approved }); }}
                   />
                 );
               }

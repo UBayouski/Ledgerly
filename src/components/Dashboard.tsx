@@ -8,6 +8,7 @@ import { Chat, type ChatController } from "./Chat";
 import { Grid, type GridHandle, type ShowCommand } from "./Grid";
 import { VIEW_LABELS } from "./columns";
 import type { GridContext } from "./grid-context";
+import { affectedViews } from "@/lib/tool-policy";
 
 type Cache = Partial<Record<ViewId, { rows: Row[]; fetchedAt: string }>>;
 
@@ -18,6 +19,9 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
   const [errors, setErrors] = useState<Partial<Record<ViewId, string>>>({});
   const [selected, setSelected] = useState<string[]>([]);
   const [gridContext, setGridContext] = useState<GridContext | null>(null);
+  const [dataRevision, setDataRevision] = useState(0);
+  const refreshQueue = useRef<Promise<boolean>>(Promise.resolve(true));
+  const requestVersions = useRef<Partial<Record<ViewId, number>>>({});
   const gridRef = useRef<GridHandle>(null);
   const pending = useRef<ShowCommand | null>(null);
   const viewRef = useRef(view);
@@ -25,26 +29,44 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
   const cacheRef = useRef(cache);
   cacheRef.current = cache;
 
-  const load = useCallback(async (v: ViewId, force = false): Promise<Row[]> => {
+  const reload = useCallback(async (v: ViewId, force = false): Promise<{ rows: Row[]; ok: boolean }> => {
     const hit = cacheRef.current[v];
-    if (hit && !force) return hit.rows;
+    if (hit && !force) return { rows: hit.rows, ok: true };
+    const version = (requestVersions.current[v] ?? 0) + 1;
+    requestVersions.current[v] = version;
     setLoading((l) => ({ ...l, [v]: true }));
     setErrors((e) => ({ ...e, [v]: undefined }));
     try {
       const res = await fetch(`/api/data/${v}`, { cache: "no-store" });
       const json = (await res.json()) as { rows: Row[]; fetchedAt?: string; error?: string };
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+      if (requestVersions.current[v] !== version) return { rows: cacheRef.current[v]?.rows ?? [], ok: false };
       const entry = { rows: json.rows ?? [], fetchedAt: json.fetchedAt ?? new Date().toISOString() };
       setCache((c) => ({ ...c, [v]: entry }));
       cacheRef.current = { ...cacheRef.current, [v]: entry };
-      return entry.rows;
+      return { rows: entry.rows, ok: true };
     } catch (e) {
-      setErrors((er) => ({ ...er, [v]: e instanceof Error ? e.message : "Failed to load" }));
-      return [];
+      if (requestVersions.current[v] === version) setErrors((er) => ({ ...er, [v]: e instanceof Error ? e.message : "Failed to load" }));
+      return { rows: cacheRef.current[v]?.rows ?? [], ok: false };
     } finally {
-      setLoading((l) => ({ ...l, [v]: false }));
+      if (requestVersions.current[v] === version) setLoading((l) => ({ ...l, [v]: false }));
     }
   }, []);
+
+  const load = useCallback(async (v: ViewId, force = false) => (await reload(v, force)).rows, [reload]);
+
+  const afterActions = useCallback((names: string[]): Promise<boolean> => {
+    const views = [...new Set(names.flatMap(affectedViews))];
+    if (!views.length) return Promise.resolve(true);
+    setDataRevision((revision) => revision + 1);
+    // Batch parallel tool results, and let a later mutation refresh after any earlier one.
+    const task = refreshQueue.current.then(async () => {
+      const results = await Promise.all(views.map((v) => reload(v, true)));
+      return results.every((result) => result.ok);
+    });
+    refreshQueue.current = task.catch(() => false);
+    return refreshQueue.current;
+  }, [reload]);
 
   useEffect(() => {
     void load(view);
@@ -80,6 +102,7 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
 
   const controller: ChatController = {
     show,
+    afterActions,
     snapshot: async (v, limit, onlySelected) => {
       if (v === viewRef.current && gridRef.current) {
         const snap = gridRef.current.snapshot(limit, onlySelected);
@@ -126,6 +149,7 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
       </header>
 
       <Brief
+        dataRevision={dataRevision}
         onShow={(v, ids) => void show(v, { highlightIds: ids })}
         onReviewOverdue={() => void show("invoices", {
           filters: [{ field: "daysOverdue", op: "greaterThan", value: 0 }],
@@ -136,9 +160,9 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
       <div className="workspace">
         <section className="panel">
-          <nav className="tabs">
+          <nav className="tabs" aria-label="Record views">
             {VIEWS.map((v) => (
-              <button key={v} className={`tab${v === view ? " active" : ""}`} onClick={() => { if (v !== view) setSelected([]); setView(v); }}>
+              <button key={v} className={`tab${v === view ? " active" : ""}`} aria-pressed={v === view} onClick={() => { if (v !== view) setSelected([]); setView(v); }}>
                 {VIEW_LABELS[v]}
                 {cache[v] && <span className="count">{cache[v]!.rows.length}</span>}
               </button>
