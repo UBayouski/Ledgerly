@@ -4,13 +4,13 @@ import { VIEWS } from "./tools";
 export const briefSchema = z.object({
   headline: z
     .string()
-    .describe("One sentence, the single most important thing for the merchant today"),
+    .describe("One sentence under 110 characters: the single most important thing for the merchant today"),
   items: z
     .array(
       z.object({
         severity: z.enum(["urgent", "attention", "good"]),
-        title: z.string().describe("Short, under 60 characters"),
-        detail: z.string().describe("One or two sentences with concrete numbers and names"),
+        title: z.string().describe("Short, under 50 characters"),
+        detail: z.string().describe("One sentence, under 140 characters, with concrete numbers and names"),
         view: z.enum(VIEWS),
         ids: z.array(z.string()).describe("Row ids in that view to highlight; may be empty"),
         suggestedPrompt: z

@@ -7,6 +7,7 @@ import { Brief } from "./Brief";
 import { Chat, type ChatController } from "./Chat";
 import { Grid, type GridHandle, type ShowCommand } from "./Grid";
 import { VIEW_LABELS } from "./columns";
+import type { GridContext } from "./grid-context";
 
 type Cache = Partial<Record<ViewId, { rows: Row[]; fetchedAt: string }>>;
 
@@ -16,6 +17,7 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
   const [loading, setLoading] = useState<Partial<Record<ViewId, boolean>>>({});
   const [errors, setErrors] = useState<Partial<Record<ViewId, string>>>({});
   const [selected, setSelected] = useState<string[]>([]);
+  const [gridContext, setGridContext] = useState<GridContext | null>(null);
   const gridRef = useRef<GridHandle>(null);
   const pending = useRef<ShowCommand | null>(null);
   const viewRef = useRef(view);
@@ -62,6 +64,7 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
       await load(v);
       if (viewRef.current !== v) {
         pending.current = cmd;
+        setSelected([]);
         setView(v);
         // Give React a tick to mount the new grid, then apply.
         await new Promise((r) => setTimeout(r, 250));
@@ -89,10 +92,20 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
       view: viewRef.current,
       selectedIds: selected,
       rowCount: cacheRef.current[viewRef.current]?.rows.length ?? 0,
+      visibleRowCount: gridContext?.view === view ? gridContext.visibleRows : cacheRef.current[view]?.rows.length ?? 0,
+      filters: gridContext?.view === view ? gridContext.filters : [],
     }),
   };
 
   const rows = cache[view]?.rows ?? [];
+  const currentGridContext = gridContext?.view === view ? gridContext : null;
+  const announcement = loading[view] ? `Loading ${VIEW_LABELS[view].toLowerCase()}.` : currentGridContext ? [
+    `Showing ${currentGridContext.visibleRows} of ${currentGridContext.totalRows} ${VIEW_LABELS[view].toLowerCase()} records.`,
+    currentGridContext.detail,
+    ...currentGridContext.filters,
+    `${currentGridContext.highlighted} highlighted.`,
+    `${selected.length} selected.`,
+  ].filter(Boolean).join(" ") : "";
 
   return (
     <div className="app">
@@ -107,18 +120,25 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
             {cache[view]?.fetchedAt ? `Updated ${new Date(cache[view]!.fetchedAt).toLocaleTimeString()}` : ""}
           </span>
           <button className="ghost small" onClick={() => void load(view, true)} disabled={loading[view]}>
-            Refresh
+            {loading[view] ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </header>
 
-      <Brief onShow={(v, ids) => void show(v, { highlightIds: ids })} />
+      <Brief
+        onShow={(v, ids) => void show(v, { highlightIds: ids })}
+        onReviewOverdue={() => void show("invoices", {
+          filters: [{ field: "daysOverdue", op: "greaterThan", value: 0 }],
+          sort: { field: "due", dir: "desc" },
+        })}
+      />
 
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
       <div className="workspace">
         <section className="panel">
           <nav className="tabs">
             {VIEWS.map((v) => (
-              <button key={v} className={`tab${v === view ? " active" : ""}`} onClick={() => setView(v)}>
+              <button key={v} className={`tab${v === view ? " active" : ""}`} onClick={() => { if (v !== view) setSelected([]); setView(v); }}>
                 {VIEW_LABELS[v]}
                 {cache[v] && <span className="count">{cache[v]!.rows.length}</span>}
               </button>
@@ -126,29 +146,33 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
           </nav>
           {errors[view] && (
             <div className="banner err">
-              <strong>Could not load {VIEW_LABELS[view].toLowerCase()}.</strong> {errors[view]}
+              <div>
+                <strong>Could not {cache[view] ? "refresh" : "load"} {VIEW_LABELS[view].toLowerCase()}.</strong>{" "}
+                {cache[view] ? "Your last loaded records are still shown. Check your connection and try again." : "Check your connection and try again."}
+              </div>
+              <button className="ghost small" onClick={() => void load(view, true)}>Retry</button>
             </div>
           )}
-          <Grid ref={gridRef} view={view} rows={rows} loading={Boolean(loading[view])} onSelectionChange={setSelected} />
+          <Grid key={view} ref={gridRef} view={view} rows={rows} loading={Boolean(loading[view])} loadFailed={Boolean(errors[view])} onSelectionChange={setSelected} onContextChange={setGridContext} />
           {selected.length > 0 && (
             <div className="selection-bar">
-              {selected.length} selected ·{" "}
+              <span>{selected.length} selected</span>
               <button
                 className="link"
                 onClick={() =>
                   window.dispatchEvent(
                     new CustomEvent("ledgerly:prompt", {
-                      detail: `Look at the ${selected.length} selected ${view} rows (use get_grid_snapshot with onlySelected) and tell me what needs attention.`,
+                      detail: `Review my ${selected.length} selected ${view} records and tell me what needs attention.`,
                     }),
                   )
                 }
               >
-                Ask copilot about selection
+                Ask the copilot about these rows
               </button>
             </div>
           )}
         </section>
-        <Chat controller={controller} modelLabel={modelLabel} />
+        <Chat controller={controller} modelLabel={modelLabel} loading={Boolean(loading[view])} />
       </div>
     </div>
   );

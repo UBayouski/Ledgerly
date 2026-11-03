@@ -1,37 +1,43 @@
 "use client";
 
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { createElement, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
   ModuleRegistry,
-  colorSchemeDark,
   themeQuartz,
   type ColDef,
   type FilterModel,
   type GridApi,
   type GridReadyEvent,
   type IRowNode,
+  type ICellRendererParams,
 } from "ag-grid-community";
-import type { Row } from "@/lib/data";
+import type { InvoiceRow, Row } from "@/lib/data";
 import type { ViewId } from "@/lib/tools";
-import { COLUMNS, NUMBER_FIELDS } from "./columns";
+import { COLUMNS, NUMBER_FIELDS, VIEW_LABELS } from "./columns";
+import { describeGrid, type GridContext } from "./grid-context";
+import { InvoiceDetails } from "./InvoiceDetails";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const theme = themeQuartz.withPart(colorSchemeDark).withParams({
-  backgroundColor: "#0f141b",
-  foregroundColor: "#d7dee8",
-  headerBackgroundColor: "#121922",
-  headerTextColor: "#8b98a9",
-  borderColor: "#1f2733",
-  accentColor: "#3b82f6",
-  rowHoverColor: "#16202b",
-  selectedRowBackgroundColor: "#1b2a3d",
+const theme = themeQuartz.withParams({
+  backgroundColor: "#eef1f6",
+  foregroundColor: "#0f1a2b",
+  headerBackgroundColor: "#e3e8f0",
+  headerTextColor: "#5a6a80",
+  borderColor: "#c6d0dd",
+  accentColor: "#2563eb",
+  rowHoverColor: "#e6ebf3",
+  selectedRowBackgroundColor: "#dbe7fb",
+  chromeBackgroundColor: "#e3e8f0",
   fontFamily: "inherit",
   fontSize: 13,
   headerFontSize: 12,
+  headerFontWeight: 500,
   spacing: 6,
+  wrapperBorderRadius: 0,
+  wrapperBorder: false,
 });
 
 export type FilterSpec = {
@@ -59,23 +65,89 @@ type Props = {
   view: ViewId;
   rows: Row[];
   loading: boolean;
+  loadFailed?: boolean;
   onSelectionChange: (ids: string[]) => void;
+  onContextChange: (context: GridContext) => void;
 };
 
-export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, loading, onSelectionChange }, ref) {
+const EMPTY_DETAILS: Record<ViewId, string> = {
+  invoices: "Invoices from your connected PayPal account will appear here once created.",
+  transactions: "Payments from the last 30 days will appear here once available.",
+  disputes: "Disputes from your connected PayPal account will appear here if a case is opened.",
+  catalog: "Products and subscription plans will appear here once added to your PayPal account.",
+};
+
+function GridEmpty({ filtered, view, loadFailed, onClear }: {
+  filtered: boolean;
+  view: ViewId;
+  loadFailed: boolean;
+  onClear: () => void;
+}) {
+  return (
+    <div className="grid-empty">
+      <strong>{loadFailed ? "Records unavailable" : filtered ? `No matching ${VIEW_LABELS[view].toLowerCase()}` : `No ${VIEW_LABELS[view].toLowerCase()} yet`}</strong>
+      <p>{loadFailed ? "Use Retry above to load your records." : filtered ? "Try another search or clear the current filters." : EMPTY_DETAILS[view]}</p>
+      {!loadFailed && filtered && <button className="ghost" onClick={onClear}>Clear search and filters</button>}
+    </div>
+  );
+}
+
+export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, loading, loadFailed = false, onSelectionChange, onContextChange }, ref) {
   const apiRef = useRef<GridApi | null>(null);
   const [quickFilter, setQuickFilter] = useState("");
+  const [allColumns, setAllColumns] = useState(false);
+  const [context, setContext] = useState<GridContext | null>(null);
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const closeInvoice = useCallback(() => setInvoiceId(null), []);
+  const invoice = view === "invoices" ? rows.find((row): row is InvoiceRow => "due" in row && row.id === invoiceId) : undefined;
   const highlight = useRef<Set<string>>(new Set());
 
-  const columnDefs = useMemo<ColDef[]>(() => COLUMNS[view], [view]);
+  const columnDefs = useMemo<ColDef[]>(() => COLUMNS[view].map((column) => {
+    if (view === "invoices" && column.field === "number") return {
+      ...column,
+      cellRenderer: (p: ICellRendererParams<InvoiceRow>) => createElement("button", {
+        className: "link invoice-number-link",
+        "aria-label": `View invoice ${p.value || p.data?.id} details`,
+        "aria-haspopup": "dialog",
+        onClick: () => { if (p.data) setInvoiceId(p.data.id); },
+      }, p.value || "View invoice"),
+    };
+    return view === "invoices" && column.hide ? { ...column, hide: !allColumns } : column;
+  }), [view, allColumns]);
   const defaultColDef = useMemo<ColDef>(
     () => ({ sortable: true, filter: true, resizable: true, floatingFilter: false, suppressHeaderMenuButton: false }),
     [],
   );
 
+  const updateContext = useCallback((api: GridApi) => {
+    const visible: Row[] = [];
+    api.forEachNodeAfterFilterAndSort((node) => { if (node.data) visible.push(node.data as Row); });
+    const summary = describeGrid({
+      view, rows: visible, totalRows: rows.length,
+      filterModel: api.getFilterModel(), search: api.getGridOption("quickFilterText") ?? "",
+      highlightedIds: highlight.current, columns: COLUMNS[view],
+      sorted: api.getColumnState().some((column) => (column.sort ?? null) !== (COLUMNS[view].find((def) => def.field === column.colId)?.sort ?? null)),
+    });
+    setContext(summary);
+    onContextChange(summary);
+  }, [view, rows.length, onContextChange]);
+
+  const clearView = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    highlight.current = new Set();
+    api.setFilterModel(null);
+    api.setGridOption("quickFilterText", "");
+    setQuickFilter("");
+    api.applyColumnState({ state: COLUMNS[view].filter((column) => column.sort === "asc" || column.sort === "desc").map((column) => ({ colId: column.field!, sort: column.sort === "asc" ? "asc" : "desc" })), defaultState: { sort: null } });
+    api.redrawRows();
+    updateContext(api);
+  }, [view, updateContext]);
+
   const onGridReady = useCallback((e: GridReadyEvent) => {
     apiRef.current = e.api;
-  }, []);
+    updateContext(e.api);
+  }, [updateContext]);
 
   useImperativeHandle(
     ref,
@@ -110,6 +182,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
         if (cmd.sort && known.has(cmd.sort.field)) {
           api.applyColumnState({ state: [{ colId: cmd.sort.field, sort: cmd.sort.dir }], defaultState: { sort: null } });
         }
+        api.setGridOption("quickFilterText", cmd.quickSearch ?? "");
         setQuickFilter(cmd.quickSearch ?? "");
         highlight.current = new Set(cmd.highlightIds ?? []);
         api.redrawRows();
@@ -122,6 +195,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           api.ensureNodeVisible(nodes[0], "middle");
           api.flashCells({ rowNodes: nodes, flashDuration: 1500, fadeDuration: 1000 });
         }
+        updateContext(api);
         return { visibleRows: api.getDisplayedRowCount(), highlighted: nodes.length, unknownFields };
       },
       snapshot: (limit, onlySelected) => {
@@ -139,38 +213,42 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
         });
         return { rows: out, total };
       },
-      clearFilters: () => {
-        apiRef.current?.setFilterModel(null);
-        setQuickFilter("");
-        highlight.current = new Set();
-        apiRef.current?.redrawRows();
-      },
+      clearFilters: clearView,
       selectedIds: () => (apiRef.current?.getSelectedRows() as Row[] | undefined)?.map((r) => r.id) ?? [],
     }),
-    [view],
+    [view, clearView, updateContext],
   );
 
   return (
     <div className="grid-shell">
+      <div className={`grid-context${context?.canClear ? " focused" : ""}`}>
+        <div className="grid-context-copy">
+          <div className="grid-context-title">
+            <strong>{loading ? "Loading records…" : context?.title ?? "Your records"}</strong>
+            {!loading && Boolean(context?.highlighted) && <span className="context-highlight">{context!.highlighted} highlighted</span>}
+            {!loading && context?.detail && <span className="grid-context-total">{context.detail}</span>}
+          </div>
+          {!loading && Boolean(context?.filters.length) && <div className="grid-context-filters">{context!.filters.join(" · ")}</div>}
+        </div>
+        {context?.canClear && <button className="link small" onClick={clearView}>Clear view</button>}
+      </div>
       <div className="grid-toolbar">
         <input
           className="quick"
-          placeholder={`Quick filter ${view}…`}
+          placeholder={`Search ${view}`}
           value={quickFilter}
-          onChange={(e) => setQuickFilter(e.target.value)}
-        />
-        <button
-          className="ghost"
-          onClick={() => {
-            apiRef.current?.setFilterModel(null);
-            setQuickFilter("");
-            highlight.current = new Set();
-            apiRef.current?.redrawRows();
+          aria-label={`Search ${view}`}
+          onChange={(e) => {
+            setQuickFilter(e.target.value);
+            apiRef.current?.setGridOption("quickFilterText", e.target.value);
           }}
-        >
-          Clear filters
-        </button>
-        <span className="muted">{loading ? "Loading…" : `${rows.length} rows`}</span>
+        />
+        <span className="muted small">{loading ? "Loading…" : context && context.visibleRows !== rows.length ? `${context.visibleRows} of ${rows.length} records` : `${rows.length} records`}</span>
+        {view === "invoices" && (
+          <button className="ghost column-toggle" aria-pressed={allColumns} onClick={() => setAllColumns((v) => !v)}>
+            {allColumns ? "Show fewer columns" : "Show all columns"}
+          </button>
+        )}
       </div>
       <div className="grid-body">
         <AgGridReact
@@ -180,16 +258,43 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
           getRowId={(p) => String((p.data as Row).id)}
-          rowSelection={{ mode: "multiRow", checkboxes: true, headerCheckbox: true, enableClickSelection: true }}
+          rowSelection={{ mode: "multiRow", checkboxes: true, headerCheckbox: true, enableClickSelection: view !== "invoices" }}
+          selectionColumnDef={{ width: 42, minWidth: 42, maxWidth: 42, resizable: false, cellClass: "invoice-selection-cell" }}
           quickFilterText={quickFilter}
-          loading={loading}
+          includeHiddenColumnsInQuickFilter
+          rowHeight={view === "invoices" ? 58 : undefined}
+          loading={loading && rows.length === 0}
           animateRows
           onGridReady={onGridReady}
+          onModelUpdated={(e) => updateContext(e.api)}
+          onRowClicked={(e) => {
+            if (view !== "invoices" || !e.data) return;
+            const target = e.event?.target;
+            if (target instanceof Element && target.closest("button, a, input, .ag-selection-checkbox, .invoice-selection-cell")) return;
+            setInvoiceId((e.data as InvoiceRow).id);
+          }}
+          onCellKeyDown={(e) => {
+            if (view !== "invoices" || !e.data || (e.event as KeyboardEvent | undefined)?.key !== "Enter") return;
+            if (!("column" in e) || e.column?.getColId() === "ag-Grid-SelectionColumn") return;
+            setInvoiceId((e.data as InvoiceRow).id);
+          }}
           onSelectionChanged={(e) => onSelectionChange((e.api.getSelectedRows() as Row[]).map((r) => r.id))}
-          rowClassRules={{ "row-highlight": (p) => highlight.current.has(String((p.data as Row | undefined)?.id)) }}
-          overlayNoRowsTemplate='<div class="empty">No rows. Try the seed script in the README, or make a sandbox purchase.</div>'
+          rowClassRules={{
+            "row-highlight": (p) => highlight.current.has(String((p.data as Row | undefined)?.id)),
+            "invoice-row": () => view === "invoices",
+          }}
+          suppressOverlays={["noRows", "noMatchingRows"]}
         />
+        {!loading && context?.visibleRows === 0 && (
+          <div className="grid-empty-layer">
+            <GridEmpty filtered={rows.length > 0} view={view} loadFailed={loadFailed && rows.length === 0} onClear={clearView} />
+          </div>
+        )}
       </div>
+      {invoice && <InvoiceDetails invoice={invoice} onClose={closeInvoice} onAsk={(prompt) => {
+        setInvoiceId(null);
+        window.dispatchEvent(new CustomEvent("ledgerly:prompt", { detail: prompt }));
+      }} />}
     </div>
   );
 });

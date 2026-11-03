@@ -69,7 +69,7 @@ export async function GET() {
       schema: briefSchema,
       providerOptions,
       system:
-        "You write a short morning brief for a small-business owner about their PayPal account. Be specific: name customers, amounts with currency, days overdue, deadlines. Order items by urgency. Never invent records; only reference ids present in the data. If there is nothing urgent, say so and pick a 'good' item. Return metrics exactly as given.",
+        "You write a short morning brief for a small-business owner about their PayPal account. Be specific: name customers, amounts, days overdue, deadlines. Write money the way a bank statement does: $4,200 or $6,728 for USD (symbol, thousands separator, no cents unless the amount is under $100), and 1.250,00 EUR style with the code for other currencies. Never write 4200 USD. Order items by urgency. Give up to six items: every overdue invoice or open dispute that needs action, one item of good news when there is any, and nothing padded. Never invent records; only reference ids present in the data. If there is nothing urgent, say so and pick a 'good' item. Return metrics exactly as given.",
       prompt: `Today is ${new Date().toISOString().slice(0, 10)}. Account data (JSON):\n${JSON.stringify(compact)}`,
     });
 

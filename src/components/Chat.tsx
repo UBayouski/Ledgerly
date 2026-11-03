@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -13,8 +13,9 @@ import {
 import type { ViewId } from "@/lib/tools";
 import type { ShowCommand } from "./Grid";
 import { Markdown } from "./Markdown";
+import { VIEW_LABELS } from "./columns";
 
-export type ChatContext = { view: ViewId; selectedIds: string[]; rowCount: number };
+export type ChatContext = { view: ViewId; selectedIds: string[]; rowCount: number; visibleRowCount: number; filters: string[] };
 
 export type ChatController = {
   /** Switch view (loading data if needed) and apply grid commands. */
@@ -23,15 +24,49 @@ export type ChatController = {
   getContext: () => ChatContext;
 };
 
-const SUGGESTIONS = [
-  "Who owes me money? Show overdue invoices sorted by amount.",
-  "Summarize the last 30 days: gross, fees, refunds, and top customers.",
-  "Any disputes that need a response this week? What should I do?",
-  "Draft reminders for every invoice more than 14 days overdue.",
-];
+type Suggestion = { label: string; detail: string; prompt: string };
+const SUGGESTIONS: Record<ViewId, Suggestion[]> = {
+  invoices: [
+    { label: "Review overdue", detail: "See who owes you and what to prioritize", prompt: "Show overdue invoices sorted by outstanding amount, and tell me what needs attention." },
+    { label: "Draft reminders", detail: "Prepare follow-ups for late payments", prompt: "Draft reminders for every invoice more than 14 days overdue. Explain each reminder before requesting my approval." },
+    { label: "Summarize this view", detail: "Understand the invoices on screen", prompt: "Summarize the invoices on screen, including outstanding balances and payment statuses." },
+  ],
+  transactions: [
+    { label: "Summarize payments", detail: "Gross payments, fees, and refunds", prompt: "Summarize the payments on screen, including fees, refunds, and top customers." },
+    { label: "Review refunds", detail: "Find refunded and reversed payments", prompt: "Show refunded or reversed transactions and summarize their amounts and customers." },
+    { label: "Understand fees", detail: "See how fees affect your revenue", prompt: "Summarize the fees and net revenue of the transactions on screen, keeping currencies separate." },
+  ],
+  disputes: [
+    { label: "Check deadlines", detail: "Find disputes that need a response", prompt: "Which open disputes need a response this week? Show them sorted by response deadline and explain what I should do." },
+    { label: "Plan a response", detail: "Review the evidence you may need", prompt: "Review the disputes on screen and suggest response steps and evidence needed. Do not submit anything." },
+    { label: "Summarize this view", detail: "Review amounts at risk and case status", prompt: "Summarize the disputes on screen, including amounts at risk and response deadlines." },
+  ],
+  catalog: [
+    { label: "Review catalog", detail: "Get an overview of products and plans", prompt: "Summarize the products and subscription plans on screen, including their statuses." },
+    { label: "Check inactive items", detail: "Find products or plans to review", prompt: "Find inactive products and subscription plans and show them in the grid. Explain what needs review." },
+    { label: "Compare plans", detail: "Compare prices and billing intervals", prompt: "Compare subscription plans in the current catalog, including prices, currencies, billing intervals, and statuses." },
+  ],
+};
 
 function humanTool(name: string): string {
   return name.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+}
+
+/** Tool input as a readable list; nested values collapse to compact JSON. */
+function Params({ input }: { input: unknown }) {
+  if (!input || typeof input !== "object") return <pre>{JSON.stringify(input, null, 2)}</pre>;
+  const entries = Object.entries(input as Record<string, unknown>);
+  if (entries.length === 0) return null;
+  return (
+    <dl className="params">
+      {entries.map(([k, v]) => (
+        <Fragment key={k}>
+          <dt>{k.replace(/_/g, " ")}</dt>
+          <dd>{typeof v === "string" ? v : JSON.stringify(v)}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
 }
 
 function ToolCard({
@@ -68,7 +103,7 @@ function ToolCard({
       </button>
       {state === "approval-requested" && (
         <div className="approval">
-          <pre>{JSON.stringify(part.input, null, 2)}</pre>
+          <Params input={part.input} />
           <div className="row">
             <button className="primary" onClick={() => onApprove(part.approval.id, true)}>
               Approve
@@ -107,7 +142,7 @@ function ToolCard({
  */
 const latest: { controller: ChatController | null } = { controller: null };
 
-export function Chat({ controller, modelLabel }: { controller: ChatController; modelLabel: string }) {
+export function Chat({ controller, modelLabel, loading }: { controller: ChatController; modelLabel: string; loading: boolean }) {
   useEffect(() => {
     latest.controller = controller;
     return () => {
@@ -161,6 +196,19 @@ export function Chat({ controller, modelLabel }: { controller: ChatController; m
   }, [sendMessage]);
 
   const busy = status === "submitted" || status === "streaming";
+  const context = controller.getContext();
+  const viewLabel = VIEW_LABELS[context.view].toLowerCase();
+  const recordLabel = context.visibleRowCount === context.rowCount
+    ? `${context.rowCount} ${context.rowCount === 1 ? "record" : "records"}`
+    : `${context.visibleRowCount} of ${context.rowCount} records`;
+  const suggestions = context.selectedIds.length > 0 ? [
+    {
+      label: "Review selection",
+      detail: `${context.selectedIds.length} selected ${context.selectedIds.length === 1 ? "record" : "records"}`,
+      prompt: "Summarize only my selected records and tell me what needs attention.",
+    },
+    ...SUGGESTIONS[context.view].slice(0, 2),
+  ] : SUGGESTIONS[context.view];
 
   const submit = () => {
     const text = input.trim();
@@ -173,20 +221,31 @@ export function Chat({ controller, modelLabel }: { controller: ChatController; m
     <aside className="chat">
       <div className="chat-head">
         <div>
-          <div className="chat-title">Copilot</div>
-          <div className="muted small">{modelLabel} + PayPal Agent Toolkit</div>
+          <div className="chat-title"><span className="copilot-mark" aria-hidden>✦</span> Copilot</div>
+          <div className="chat-view-context">
+            Viewing {viewLabel}, {loading ? "Loading…" : recordLabel}
+          </div>
         </div>
         <button className="ghost small" onClick={() => setMessages([])} disabled={busy || messages.length === 0}>
           New chat
         </button>
       </div>
+      {(context.selectedIds.length > 0 || context.filters.length > 0) && (
+        <div className="chat-context-bar">
+          {context.selectedIds.length > 0 && <span>{context.selectedIds.length} selected</span>}
+          {context.filters.length > 0 && <span>Using the filtered view</span>}
+        </div>
+      )}
       <div className="chat-scroll" ref={scroller}>
         {messages.length === 0 && (
           <div className="suggestions">
-            <div className="muted">Try asking</div>
-            {SUGGESTIONS.map((s) => (
-              <button key={s} className="suggestion" onClick={() => void sendMessage({ text: s })}>
-                {s}
+            <div className="copilot-welcome">
+              <h3>What needs your attention?</h3>
+            </div>
+            {suggestions.map((s) => (
+              <button key={s.label} className="suggestion" disabled={loading || busy} onClick={() => void sendMessage({ text: s.prompt })}>
+                <span className="suggestion-copy"><strong>{s.label}</strong><span>{s.detail}</span></span>
+                <span className="suggestion-arrow" aria-hidden>↗</span>
               </button>
             ))}
           </div>
@@ -208,7 +267,7 @@ export function Chat({ controller, modelLabel }: { controller: ChatController; m
             })}
           </div>
         ))}
-        {error && <div className="msg error">{error.message}</div>}
+        {error && <div className="msg error">The copilot couldn’t complete this response. You can send another message or start a new chat.</div>}
         {busy && <div className="typing">Thinking…</div>}
       </div>
       <form
@@ -227,7 +286,8 @@ export function Chat({ controller, modelLabel }: { controller: ChatController; m
               submit();
             }
           }}
-          placeholder="Ask about your PayPal account, or tell me what to do…"
+          aria-label="Message copilot"
+          placeholder={context.selectedIds.length ? "Ask about your selection…" : `Ask about your ${viewLabel}…`}
           rows={2}
         />
         {busy ? (
@@ -240,6 +300,10 @@ export function Chat({ controller, modelLabel }: { controller: ChatController; m
           </button>
         )}
       </form>
+      <div className="chat-footnote">
+        <span>{modelLabel} with the PayPal Agent Toolkit.</span>
+        <span>Changes to PayPal need your approval.</span>
+      </div>
     </aside>
   );
 }
