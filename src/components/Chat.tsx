@@ -18,6 +18,7 @@ import { InvoiceActionPreview } from "./InvoiceActionPreview";
 import { reminderInput, type ReminderInvoice } from "@/lib/reminder-preview";
 import { blockedReason, invoiceAction, requiresInvoiceRecipient } from "@/lib/invoice-actions";
 import { cleanPayPalError } from "@/lib/tool-result";
+import { orderStepParts } from "@/lib/chat-parts";
 import { completedActions, needsApproval } from "@/lib/tool-policy";
 
 export type ChatContext = { view: ViewId; selectedIds: string[]; rowCount: number; visibleRowCount: number; filters: string[] };
@@ -221,6 +222,8 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
   }, [controller]);
   const [input, setInput] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
+  const scrollContent = useRef<HTMLDivElement>(null);
+  const followOutput = useRef(true);
   const refreshedCalls = useRef(new Set<string>());
   const [refreshStates, setRefreshStates] = useState<Record<string, "refreshed" | "failed">>({});
 
@@ -268,13 +271,31 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
   }, [messages]);
 
   useEffect(() => {
-    scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+    const panel = scroller.current;
+    if (panel && followOutput.current) panel.scrollTop = panel.scrollHeight;
   }, [messages, status]);
+
+  useEffect(() => {
+    const panel = scroller.current;
+    const content = scrollContent.current;
+    if (!panel || !content) return;
+    // Tool previews can expand after their message arrives. Follow that growth
+    // only while the reader is already following the end of the conversation.
+    const observer = new ResizeObserver(() => {
+      if (followOutput.current) panel.scrollTop = panel.scrollHeight;
+    });
+    observer.observe(content);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const text = (e as CustomEvent<string>).detail;
-      if (text) void sendMessage({ text });
+      if (text) {
+        followOutput.current = true;
+        void sendMessage({ text });
+      }
     };
     window.addEventListener("ledgerly:prompt", handler);
     return () => window.removeEventListener("ledgerly:prompt", handler);
@@ -298,6 +319,7 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
   const submit = () => {
     const text = input.trim();
     if (!text || busy) return;
+    followOutput.current = true;
     setInput("");
     void sendMessage({ text });
   };
@@ -311,7 +333,7 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
             Viewing {viewLabel}, {loading ? "Loading…" : recordLabel}
           </div>
         </div>
-        <button className="ghost small" onClick={() => setMessages([])} disabled={busy || messages.length === 0}>
+        <button className="ghost small" onClick={() => { followOutput.current = true; setMessages([]); }} disabled={busy || messages.length === 0}>
           New chat
         </button>
       </div>
@@ -321,14 +343,18 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
           {context.filters.length > 0 && <span>Using the filtered view</span>}
         </div>
       )}
-      <div className="chat-scroll" ref={scroller}>
+      <div className="chat-scroll" ref={scroller} onScroll={(event) => {
+        const panel = event.currentTarget;
+        followOutput.current = panel.scrollHeight - panel.clientHeight - panel.scrollTop <= 64;
+      }}>
+        <div className="chat-content" ref={scrollContent}>
         {messages.length === 0 && (
           <div className="suggestions">
             <div className="copilot-welcome">
               <h3>What needs your attention?</h3>
             </div>
             {suggestions.map((s) => (
-              <button key={s.label} className="suggestion" disabled={loading || busy} onClick={() => void sendMessage({ text: s.prompt })}>
+              <button key={s.label} className="suggestion" disabled={loading || busy} onClick={() => { followOutput.current = true; void sendMessage({ text: s.prompt }); }}>
                 <span className="suggestion-copy"><strong>{s.label}</strong><span>{s.detail}</span></span>
                 <span className="suggestion-arrow" aria-hidden>↗</span>
               </button>
@@ -337,7 +363,7 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
         )}
         {messages.map((m) => (
           <div key={m.id} className={`msg ${m.role}`}>
-            {m.parts.map((part, i) => {
+            {orderStepParts(m.parts, needsApproval).map((part, i) => {
               if (part.type === "text") return <Markdown key={i} text={part.text} />;
               if (isToolUIPart(part)) {
                 return (
@@ -356,6 +382,7 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
         ))}
         {error && <div className="msg error">The copilot couldn’t complete this response. You can send another message or start a new chat.</div>}
         {busy && <div className="typing">Thinking…</div>}
+        </div>
       </div>
       <form
         className="chat-input"
