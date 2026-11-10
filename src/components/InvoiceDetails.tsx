@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { usePanelDialog } from "./use-panel-dialog";
 import type { InvoiceRow } from "@/lib/data";
 import { isOpenInvoiceStatus } from "./grid-context";
 
@@ -26,13 +26,7 @@ export function InvoiceDetails({ invoice, onClose, onAsk }: {
   onClose: () => void;
   onAsk: (prompt: string) => void;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    dialog.showModal();
-    return () => { if (dialog.open) dialog.close(); };
-  }, []);
+  const { dialogRef, close, handleClose, finishTransition } = usePanelDialog(onClose);
 
   const open = isOpenInvoiceStatus(invoice.status);
   const overdue = open && invoice.daysOverdue > 0;
@@ -43,8 +37,7 @@ export function InvoiceDetails({ invoice, onClose, onAsk }: {
   const reference = `invoice ${invoice.number || invoice.id} for ${customer} (invoice ID: ${invoice.id})`;
   const balance = open ? invoice.due : 0;
   const ask = (prompt: string) => {
-    dialogRef.current?.close();
-    onAsk(prompt);
+    close(() => onAsk(prompt));
   };
 
   return (
@@ -52,12 +45,16 @@ export function InvoiceDetails({ invoice, onClose, onAsk }: {
       ref={dialogRef}
       className="invoice-details"
       aria-labelledby="invoice-details-title"
-      onClose={() => { if (!dialogRef.current?.open) onClose(); }}
+      onClose={handleClose}
+      onCancel={(event) => { event.preventDefault(); close(); }}
+      onTransitionEnd={(event) => {
+        if (event.target === event.currentTarget && event.propertyName === "transform") finishTransition();
+      }}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
         const rect = event.currentTarget.getBoundingClientRect();
         if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
-          event.currentTarget.close();
+          close();
         }
       }}
     >
@@ -67,7 +64,7 @@ export function InvoiceDetails({ invoice, onClose, onAsk }: {
             <div className="muted small">Invoice details</div>
             <h2 id="invoice-details-title">Invoice {invoice.number || invoice.id}</h2>
           </div>
-          <button className="ghost invoice-details-close" aria-label="Close invoice details" onClick={() => dialogRef.current?.close()}>×</button>
+          <button className="ghost invoice-details-close" aria-label="Close invoice details" onClick={() => close()}>×</button>
         </header>
         <div className="invoice-details-scroll">
           <div className="invoice-details-status">

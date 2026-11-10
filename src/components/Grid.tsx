@@ -13,12 +13,14 @@ import {
   type IRowNode,
   type ICellRendererParams,
 } from "ag-grid-community";
-import type { InvoiceRow, Row, TransactionRow } from "@/lib/data";
+import type { CatalogRow, DisputeRow, InvoiceRow, Row, TransactionRow } from "@/lib/data";
 import type { ViewId } from "@/lib/tools";
 import { COLUMNS, NUMBER_FIELDS, VIEW_LABELS } from "./columns";
 import { describeGrid, type GridContext } from "./grid-context";
 import { InvoiceDetails } from "./InvoiceDetails";
 import { TransactionDetails } from "./TransactionDetails";
+import { DisputeDetails } from "./DisputeDetails";
+import { CatalogDetails } from "./CatalogDetails";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -101,9 +103,10 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
   // Row id of the record whose details panel is open (invoices and transactions have one).
   const [detailId, setDetailId] = useState<string | null>(null);
   const closeDetails = useCallback(() => setDetailId(null), []);
-  const hasDetails = view === "invoices" || view === "transactions";
   const invoice = view === "invoices" ? rows.find((row): row is InvoiceRow => "due" in row && row.id === detailId) : undefined;
   const transaction = view === "transactions" ? rows.find((row): row is TransactionRow => "eventCode" in row && row.id === detailId) : undefined;
+  const dispute = view === "disputes" ? rows.find((row): row is DisputeRow => "daysToRespond" in row && row.id === detailId) : undefined;
+  const catalogItem = view === "catalog" ? rows.find((row): row is CatalogRow => "productId" in row && row.id === detailId) : undefined;
   const highlight = useRef<Set<string>>(new Set());
 
   const columnDefs = useMemo<ColDef[]>(() => COLUMNS[view].map((column) => {
@@ -266,7 +269,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
           getRowId={(p) => String((p.data as Row).id)}
-          rowSelection={{ mode: "multiRow", checkboxes: true, headerCheckbox: true, enableClickSelection: !hasDetails }}
+          rowSelection={{ mode: "multiRow", checkboxes: true, headerCheckbox: true, enableClickSelection: false }}
           selectionColumnDef={{ width: 42, minWidth: 42, maxWidth: 42, resizable: false, cellClass: "invoice-selection-cell" }}
           quickFilterText={quickFilter}
           includeHiddenColumnsInQuickFilter
@@ -277,20 +280,20 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           onGridReady={onGridReady}
           onModelUpdated={(e) => updateContext(e.api)}
           onRowClicked={(e) => {
-            if (!hasDetails || !e.data) return;
+            if (!e.data) return;
             const target = e.event?.target;
             if (target instanceof Element && target.closest("button, a, input, .ag-selection-checkbox, .invoice-selection-cell")) return;
             setDetailId((e.data as Row).id);
           }}
           onCellKeyDown={(e) => {
-            if (!hasDetails || !e.data || (e.event as KeyboardEvent | undefined)?.key !== "Enter") return;
+            if (!e.data || (e.event as KeyboardEvent | undefined)?.key !== "Enter") return;
             if (!("column" in e) || e.column?.getColId() === "ag-Grid-SelectionColumn") return;
             setDetailId((e.data as Row).id);
           }}
           onSelectionChanged={(e) => onSelectionChange((e.api.getSelectedRows() as Row[]).map((r) => r.id))}
           rowClassRules={{
             "row-highlight": (p) => highlight.current.has(String((p.data as Row | undefined)?.id)),
-            "invoice-row": () => hasDetails,
+            "invoice-row": () => true,
             "tall-row": () => view === "invoices" || view === "transactions",
           }}
           suppressOverlays={["noRows", "noMatchingRows"]}
@@ -306,6 +309,14 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
         window.dispatchEvent(new CustomEvent("ledgerly:prompt", { detail: prompt }));
       }} />}
       {transaction && <TransactionDetails transaction={transaction} onClose={closeDetails} onAsk={(prompt) => {
+        setDetailId(null);
+        window.dispatchEvent(new CustomEvent("ledgerly:prompt", { detail: prompt }));
+      }} />}
+      {dispute && <DisputeDetails dispute={dispute} onClose={closeDetails} onAsk={(prompt) => {
+        setDetailId(null);
+        window.dispatchEvent(new CustomEvent("ledgerly:prompt", { detail: prompt }));
+      }} />}
+      {catalogItem && <CatalogDetails item={catalogItem} catalog={rows.filter((row): row is CatalogRow => "productId" in row)} onClose={closeDetails} onAsk={(prompt) => {
         setDetailId(null);
         window.dispatchEvent(new CustomEvent("ledgerly:prompt", { detail: prompt }));
       }} />}

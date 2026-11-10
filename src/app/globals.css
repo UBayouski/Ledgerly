@@ -1656,9 +1656,45 @@ code {
   background: var(--paper);
   color: var(--ink);
   box-shadow: -12px 0 40px rgba(15, 26, 43, 0.12);
+  transform: translateX(100%);
+  transition: transform 200ms var(--ease-out);
+}
+.invoice-details[open] {
+  transform: translateX(0);
+}
+.invoice-details[open].is-closing {
+  transform: translateX(100%);
+  transition-duration: 160ms;
 }
 .invoice-details::backdrop {
   background: rgba(15, 26, 43, 0.22);
+  opacity: 0;
+  transition: opacity 200ms var(--ease-out);
+}
+.invoice-details[open]::backdrop {
+  opacity: 1;
+}
+.invoice-details.is-closing::backdrop {
+  opacity: 0;
+  transition-duration: 160ms;
+}
+@starting-style {
+  .invoice-details[open] {
+    transform: translateX(100%);
+  }
+  .invoice-details[open]::backdrop {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .invoice-details[open],
+  .invoice-details[open].is-closing {
+    transform: none;
+    transition: none;
+  }
+  .invoice-details::backdrop {
+    transition: none;
+  }
 }
 .invoice-details-layout {
   display: flex;

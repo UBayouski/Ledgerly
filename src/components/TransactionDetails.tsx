@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { usePanelDialog } from "./use-panel-dialog";
 import type { TransactionRow } from "@/lib/data";
 
 function money(value: number, currency: string) {
@@ -25,19 +25,12 @@ export function TransactionDetails({ transaction: t, onClose, onAsk }: {
   onClose: () => void;
   onAsk: (prompt: string) => void;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    dialog.showModal();
-    return () => { if (dialog.open) dialog.close(); };
-  }, []);
+  const { dialogRef, close, handleClose, finishTransition } = usePanelDialog(onClose);
 
   const customer = t.payerName || t.payerEmail || "Unknown customer";
   const status = t.statusLabel || t.status || "Unknown";
   const ask = (prompt: string) => {
-    dialogRef.current?.close();
-    onAsk(prompt);
+    close(() => onAsk(prompt));
   };
 
   return (
@@ -45,12 +38,16 @@ export function TransactionDetails({ transaction: t, onClose, onAsk }: {
       ref={dialogRef}
       className="invoice-details"
       aria-labelledby="transaction-details-title"
-      onClose={() => { if (!dialogRef.current?.open) onClose(); }}
+      onClose={handleClose}
+      onCancel={(event) => { event.preventDefault(); close(); }}
+      onTransitionEnd={(event) => {
+        if (event.target === event.currentTarget && event.propertyName === "transform") finishTransition();
+      }}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
         const rect = event.currentTarget.getBoundingClientRect();
         if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
-          event.currentTarget.close();
+          close();
         }
       }}
     >
@@ -60,7 +57,7 @@ export function TransactionDetails({ transaction: t, onClose, onAsk }: {
             <div className="muted small">Transaction details</div>
             <h2 id="transaction-details-title">{t.kind || "Transaction"}</h2>
           </div>
-          <button className="ghost invoice-details-close" aria-label="Close transaction details" onClick={() => dialogRef.current?.close()}>×</button>
+          <button className="ghost invoice-details-close" aria-label="Close transaction details" onClick={() => close()}>×</button>
         </header>
         <div className="invoice-details-scroll">
           <div className="invoice-details-status">
