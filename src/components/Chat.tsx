@@ -81,11 +81,13 @@ function ToolCard({
   onApprove,
   interrupted,
   refreshState,
+  onInspect,
 }: {
   part: Extract<UIMessage["parts"][number], { type: `tool-${string}` } | { type: "dynamic-tool" }>;
   onApprove: (id: string, approved: boolean) => Promise<void>;
   interrupted: boolean;
   refreshState?: "refreshed" | "failed";
+  onInspect: () => void;
 }) {
   const name = getToolName(part);
   const state = part.state;
@@ -149,7 +151,11 @@ function ToolCard({
               : "Running…";
   return (
     <div className={`tool-card state-${state}${isUi ? " ui" : ""}`}>
-      <button className="tool-head" aria-expanded={state === "approval-requested" || open} onClick={() => setOpen((o) => !o)}>
+      <button className="tool-head" aria-expanded={state === "approval-requested" || open} onClick={() => {
+        if (state === "approval-requested") return;
+        onInspect();
+        setOpen((o) => !o);
+      }}>
         <span className="dot" />
         <span className="tool-name">{action?.title || humanTool(name)}</span>
         <span className="tool-state">{label}</span>
@@ -372,6 +378,7 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
                     part={part}
                     interrupted={status === "error"}
                     refreshState={refreshStates[part.toolCallId]}
+                    onInspect={() => { followOutput.current = false; }}
                     onApprove={async (id, approved) => { await addToolApprovalResponse({ id, approved }); }}
                   />
                 );

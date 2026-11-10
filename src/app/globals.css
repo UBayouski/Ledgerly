@@ -1359,6 +1359,8 @@ code {
 .chat-scroll {
   min-height: 0;
   padding: 12px 16px;
+  /* Keep an inspected tool header in place when its details grow below it. */
+  overflow-anchor: none;
   color-scheme: dark;
   scrollbar-width: thin;
   scrollbar-color: #526078 var(--ink-surface);
@@ -1856,6 +1858,10 @@ code {
 }
 .tall-row .ag-cell .invoice-customer {
   line-height: 1.5;
+}
+.tall-row .invoice-selection-cell .ag-cell-wrapper {
+  height: 100%;
+  align-items: center;
 }
 
 /* An action PayPal will refuse: say so before the user approves it */
