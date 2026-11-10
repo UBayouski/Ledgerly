@@ -1371,29 +1371,38 @@ code {
   min-width: 0;
   gap: 12px;
 }
+.chat :is(.tool-body, .approval) pre {
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: #526078 var(--ink-surface);
+}
 @supports selector(::-webkit-scrollbar) {
-  .chat-scroll {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre) {
     scrollbar-width: auto;
     scrollbar-color: auto;
   }
-  .chat-scroll::-webkit-scrollbar {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar {
     width: 8px;
+    height: 8px;
   }
-  .chat-scroll::-webkit-scrollbar-track {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar-track {
     background: var(--ink-surface);
   }
-  .chat-scroll::-webkit-scrollbar-thumb {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar-thumb {
     background: #526078;
     border: 2px solid var(--ink-surface);
     border-radius: 8px;
   }
-  .chat-scroll::-webkit-scrollbar-thumb:hover {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar-thumb:hover {
     background: #8190a7;
   }
-  .chat-scroll::-webkit-scrollbar-button {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar-button {
     display: none;
     width: 0;
     height: 0;
+  }
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar-corner {
+    background: var(--ink-surface);
   }
 }
 .copilot-welcome {
