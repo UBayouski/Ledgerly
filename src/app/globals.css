@@ -981,19 +981,29 @@ code {
   align-items: center;
   background: var(--paper-2);
 }
-.chat-input textarea {
+.chat-input-field {
   flex: 1;
+  min-width: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  transition: border-color 120ms var(--ease-out);
+}
+.chat-input-field:focus-within {
+  border-color: var(--accent);
+}
+.chat-input textarea {
+  display: block;
+  width: 100%;
   min-width: 0;
   resize: none;
   background: #fff;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius-m);
+  border: 0;
   color: var(--ink);
   padding: 8px 10px;
   font: inherit;
   font-size: 13px;
   line-height: 1.4;
-  transition: border-color 120ms var(--ease-out);
 }
 .chat-input textarea::placeholder {
   color: var(--ink-3);
@@ -1254,15 +1264,17 @@ code {
   background: var(--ink-surface);
   border-top-color: var(--ink-rule);
 }
+.chat-input-field {
+  border-color: var(--ink-rule);
+}
 .chat-input textarea {
   background: var(--ink-surface-2);
-  border-color: var(--ink-rule);
   color: var(--cream);
 }
 .chat-input textarea::placeholder {
   color: var(--cream-3);
 }
-.chat-input textarea:focus {
+.chat-input-field:focus-within {
   border-color: var(--accent-bright);
 }
 .chat :focus-visible {

@@ -45,7 +45,7 @@ const SUGGESTIONS: Record<ViewId, Suggestion[]> = {
   ],
   disputes: [
     { label: "Check deadlines", detail: "Find disputes that need a response", prompt: "Which open disputes need a response this week? Show them sorted by response deadline and explain what I should do." },
-    { label: "Plan a response", detail: "Review the evidence you may need", prompt: "Review the disputes on screen and suggest response steps and evidence needed. Do not submit anything." },
+    { label: "Plan a response", detail: "Review the evidence you may need", prompt: "Review the disputes on screen. Open each case's details first (the buyer's message and the disputed transaction), then suggest response steps and the evidence needed for that case. Do not submit anything." },
     { label: "Summarize this view", detail: "Review amounts at risk and case status", prompt: "Summarize the disputes on screen, including amounts at risk and response deadlines." },
   ],
   catalog: [
@@ -398,7 +398,8 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
           submit();
         }}
       >
-        <textarea
+        <div className="chat-input-field">
+          <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -410,7 +411,8 @@ export function Chat({ controller, modelLabel, loading }: { controller: ChatCont
           aria-label="Message copilot"
           placeholder={context.selectedIds.length ? "Ask about your selection…" : `Ask about your ${viewLabel}…`}
           rows={2}
-        />
+          />
+        </div>
         {busy ? (
           <button type="button" className="ghost" onClick={() => stop()}>
             Stop

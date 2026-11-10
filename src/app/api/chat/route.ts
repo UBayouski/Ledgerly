@@ -7,6 +7,7 @@ import {
 import { getModel, providerOptions } from "@/lib/model";
 import { allTools } from "@/lib/tools";
 import { hasPayPalCredentials, isSandbox } from "@/lib/paypal";
+import { errorMessage } from "@/lib/tool-result";
 
 export const maxDuration = 120;
 
@@ -75,6 +76,6 @@ export async function POST(req: Request) {
 
   return result.toUIMessageStreamResponse({
     originalMessages: body.messages,
-    onError: (error) => (error instanceof Error ? error.message : "Unknown error"),
+    onError: errorMessage,
   });
 }

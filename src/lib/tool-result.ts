@@ -19,3 +19,27 @@ export function parseToolResult(raw: unknown): unknown {
   }
   return parsed;
 }
+
+/** Readable text for any error the chat stream reports, including non-Error values such as schema issues. */
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error) return error;
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message) return record.message;
+    const issues = Array.isArray(record.issues) ? record.issues : null;
+    if (issues?.length) {
+      return issues.map((issue) => {
+        const item = issue as { path?: unknown[]; message?: string };
+        return `${item.path?.length ? `${item.path.join(".")}: ` : ""}${item.message ?? "invalid value"}`;
+      }).join("; ");
+    }
+    try {
+      const text = JSON.stringify(error);
+      if (text && text !== "{}") return text.slice(0, 500);
+    } catch {
+      // fall through
+    }
+  }
+  return "Unknown error";
+}

@@ -251,7 +251,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
             apiRef.current?.setGridOption("quickFilterText", e.target.value);
           }}
         />
-        <span className="muted small">{loading ? "Loading…" : context && context.visibleRows !== rows.length ? `${context.visibleRows} of ${rows.length} records` : `${rows.length} records`}</span>
+        <span className="muted small">{loading ? "Loading…" : context && context.visibleRows !== rows.length ? `${context.visibleRows} of ${rows.length} ${rows.length === 1 ? "record" : "records"}` : `${rows.length} ${rows.length === 1 ? "record" : "records"}`}</span>
         {COLUMNS[view].some((column) => column.hide) && (
           <button className="ghost column-toggle" aria-pressed={allColumns} onClick={() => setAllColumns((v) => !v)}>
             {allColumns ? "Show fewer columns" : "Show all columns"}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getToolkit } from "./paypal";
 import { parseToolResult } from "./tool-result";
 import { needsApproval } from "./tool-policy";
+import { SCHEMA_OVERRIDES } from "./tool-schemas";
 export { needsApproval } from "./tool-policy";
 
 /**
@@ -26,7 +27,7 @@ export function paypalTools(): ToolSet {
     out[name] = tool({
       description: t.description ?? name,
       // zod v3 schema from the toolkit; AI SDK v7 accepts it as a Standard Schema.
-      inputSchema: t.parameters as never,
+      inputSchema: (SCHEMA_OVERRIDES[name] ?? t.parameters) as never,
       needsApproval: needsApproval(name),
       execute: async (input: unknown, options) => {
         if (!t.execute) throw new Error(`${name} has no executor`);

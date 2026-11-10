@@ -27,3 +27,9 @@ test("missing deadlines and resolved cases never display a misleading zero days 
   assert.equal(days.valueFormatter(urgent), "2");
   assert.equal(days.cellClass(urgent).includes("status-overdue"), true);
 });
+
+test("disputes show the case ID and buyer by default", () => {
+  const visible = COLUMNS.disputes.filter((column) => !column.hide).map((column) => column.field);
+  assert.ok(visible.includes("id"));
+  assert.ok(visible.includes("buyer"));
+});

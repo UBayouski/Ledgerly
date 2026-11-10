@@ -104,12 +104,14 @@ export const COLUMNS: Record<ViewId, ColDef[]> = {
     { field: "id", headerName: "Invoice ID", width: 200, hide: true },
   ],
   disputes: [
+    { field: "id", headerName: "Case ID", width: 168 },
+    { field: "buyer", headerName: "Buyer", width: 130, valueFormatter: (p) => p.value || "—" },
     { field: "created", headerName: "Opened (UTC)", valueFormatter: dateTime, width: 170, hide: true },
-    { field: "status", headerName: "Status", width: 230, valueFormatter: statusLabel, cellRenderer: badge },
+    { field: "status", headerName: "Status", width: 206, valueFormatter: statusLabel, cellRenderer: badge },
     { field: "stage", headerName: "Stage", width: 140, valueFormatter: statusLabel, hide: true },
-    { field: "reason", headerName: "Reason", flex: 1, minWidth: 180, valueFormatter: statusLabel },
-    { field: "amount", headerName: "Amount", ...num, width: 120 },
-    { field: "responseDue", headerName: "Respond by", headerTooltip: "Response deadline (UTC)", valueFormatter: dateTime, width: 170, sort: "asc",
+    { field: "reason", headerName: "Reason", flex: 1, minWidth: 200, valueFormatter: statusLabel, tooltipValueGetter: (p) => statusLabel({ value: p.value } as ValueFormatterParams) },
+    { field: "amount", headerName: "Amount", ...num, width: 110 },
+    { field: "responseDue", headerName: "Respond by", headerTooltip: "Response deadline (UTC)", valueFormatter: dateTime, width: 152, sort: "asc",
       comparator: (a, b, nodeA, nodeB) => {
         const deadline = (value: string, status: string) => {
           const parsed = Date.parse(value);
@@ -131,7 +133,7 @@ export const COLUMNS: Record<ViewId, ColDef[]> = {
     },
     { field: "transactionId", headerName: "Transaction", width: 190, hide: true },
     { field: "outcome", headerName: "Outcome", width: 150, valueFormatter: statusLabel, hide: true },
-    { field: "id", headerName: "Dispute ID", width: 190, hide: true },
+    { field: "buyerMessage", headerName: "Buyer's message", width: 320, hide: true, tooltipField: "buyerMessage" },
   ],
   catalog: [
     { field: "kind", headerName: "Kind", width: 100, valueFormatter: statusLabel },

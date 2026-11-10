@@ -3,6 +3,7 @@ import { getModel, providerOptions } from "@/lib/model";
 import { fetchDisputes, fetchInvoices, fetchTransactions } from "@/lib/data";
 import { hasPayPalCredentials } from "@/lib/paypal";
 import { briefSchema } from "@/lib/brief";
+import { isCustomerPayment } from "@/lib/revenue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -26,7 +27,7 @@ export async function GET() {
     const currency = transactions[0]?.currency || invoices[0]?.currency || "USD";
 
     const metrics = {
-      gross30d: sum(transactions.filter((t) => t.amount > 0 && t.status === "S").map((t) => t.amount)),
+      gross30d: sum(transactions.filter(isCustomerPayment).map((t) => t.amount)),
       fees30d: sum(transactions.map((t) => Math.abs(t.fee))),
       refunds30d: sum(transactions.filter((t) => t.kind === "Refund").map((t) => Math.abs(t.amount))),
       openInvoicesTotal: sum(openInvoices.map((i) => i.due || i.amount)),
@@ -52,6 +53,8 @@ export async function GET() {
         reason: d.reason,
         amount: d.amount,
         daysToRespond: d.daysToRespond,
+        buyer: d.buyer || undefined,
+        buyerMessage: d.buyerMessage ? d.buyerMessage.slice(0, 300) : undefined,
       })),
       recentTransactions: transactions.slice(0, 25).map((t) => ({
         id: t.id,
@@ -60,6 +63,7 @@ export async function GET() {
         status: t.statusLabel,
         amount: t.amount,
         payer: t.payerName || t.payerEmail,
+        customerPayment: isCustomerPayment(t),
       })),
       transactionCount: transactions.length,
     };
@@ -69,7 +73,7 @@ export async function GET() {
       schema: briefSchema,
       providerOptions,
       system:
-        "You write a short morning brief for a small-business owner about their PayPal account. Be specific: name customers, amounts, days overdue, deadlines. Write money the way a bank statement does: $4,200 or $6,728 for USD (symbol, thousands separator, no cents unless the amount is under $100), and 1.250,00 EUR style with the code for other currencies. Never write 4200 USD. Order items by urgency. Give up to six items: every overdue invoice or open dispute that needs action, one item of good news when there is any, and nothing padded. Never invent records; only reference ids present in the data. If there is nothing urgent, say so and pick a 'good' item. Return metrics exactly as given.",
+        "You write a short morning brief for a small-business owner about their PayPal account. Be specific: name customers, amounts, days overdue, deadlines. Write money the way a bank statement does: $4,200 or $6,728 for USD (symbol, thousands separator, no cents unless the amount is under $100), and 1.250,00 EUR style with the code for other currencies. Never write 4200 USD. Order items by urgency. Give up to six items: every overdue invoice or open dispute that needs action, one item of good news when there is any, and nothing padded. Only transactions with customerPayment true are sales; adjustments, transfers and refunds are not good news about revenue. Never invent records; only reference ids present in the data. If there is nothing urgent, say so and pick a 'good' item. Return metrics exactly as given.",
       prompt: `Today is ${new Date().toISOString().slice(0, 10)}. Account data (JSON):\n${JSON.stringify(compact)}`,
     });
 

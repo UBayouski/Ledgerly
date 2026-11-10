@@ -54,6 +54,8 @@ export type DisputeRow = {
   daysToRespond: number;
   transactionId: string;
   outcome: string;
+  buyer: string;
+  buyerMessage: string;
 };
 
 export type CatalogRow = {
@@ -201,10 +203,21 @@ export async function fetchInvoices(): Promise<InvoiceRow[]> {
 export async function fetchDisputes(): Promise<DisputeRow[]> {
   const res = await paypalFetch<{ items?: AnyRecord[] }>(`/v1/customer/disputes?page_size=50`);
   const now = new Date().toISOString();
+  // The list omits the buyer's name and message; read the details of up to 10 open cases.
+  const open = (res.items ?? []).filter((d) => !["RESOLVED", "OTHER"].includes(str(d.status))).slice(0, 10);
+  const details = new Map<string, AnyRecord>();
+  await Promise.all(open.map(async (d) => {
+    const id = str(d.dispute_id);
+    const detail = await paypalFetch<AnyRecord>(`/v1/customer/disputes/${encodeURIComponent(id)}`).catch(() => null);
+    if (detail) details.set(id, detail);
+  }));
   return (res.items ?? []).map((d) => {
     const amount = rec(d.dispute_amount);
     const responseDue = str(d.seller_response_due_date);
-    const txs = (d.disputed_transactions as AnyRecord[] | undefined) ?? [];
+    const detail = details.get(str(d.dispute_id)) ?? d;
+    const txs = (detail.disputed_transactions as AnyRecord[] | undefined) ?? [];
+    const messages = (detail.messages as AnyRecord[] | undefined) ?? [];
+    const buyerMessage = messages.find((m) => str(m.posted_by) === "BUYER");
     return {
       id: str(d.dispute_id),
       status: str(d.status),
@@ -218,6 +231,8 @@ export async function fetchDisputes(): Promise<DisputeRow[]> {
       daysToRespond: responseDue ? daysBetween(now, responseDue) : 0,
       transactionId: str(txs[0]?.seller_transaction_id),
       outcome: str(rec(d.dispute_outcome).outcome_code),
+      buyer: str(rec(txs[0]?.buyer).name),
+      buyerMessage: str(buyerMessage?.content).trim(),
     };
   });
 }
