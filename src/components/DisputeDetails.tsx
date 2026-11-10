@@ -37,6 +37,8 @@ export function DisputeDetails({ dispute: d, onClose, onAsk }: {
   const resolved = d.status === "RESOLVED";
   const awaitingSeller = !resolved && Boolean(d.responseDue);
   const urgent = awaitingSeller && d.daysToRespond <= 3;
+  // Only when PayPal lists accept_claim for this case right now.
+  const canAccept = !resolved && d.canAcceptClaim;
   const buyer = d.buyer || "Unknown buyer";
   const ask = (prompt: string) => {
     close(() => onAsk(prompt));
@@ -110,7 +112,8 @@ export function DisputeDetails({ dispute: d, onClose, onAsk }: {
           </section>
         </div>
         <footer className="invoice-details-actions">
-          <button className="primary" onClick={() => ask(prompt)}>{resolved ? "Ask Copilot about this dispute" : "Plan a response with Copilot"}</button>
+          <button className="primary" onClick={() => ask(prompt)}>Ask Copilot about this dispute</button>
+          {canAccept && <button className="ghost" onClick={() => ask(`Review dispute ${d.id} from ${buyer} (${money(d.amount, d.currency)}). Fetch its current details first. If accepting the claim is available, prepare that one action, explain what the buyer gets back, and show it for approval before submitting. Accepting the claim is the refund; do not issue a separate refund.`)}>Accept claim in Copilot</button>}
         </footer>
       </div>
     </dialog>

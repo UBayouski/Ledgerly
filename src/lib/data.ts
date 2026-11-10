@@ -56,6 +56,8 @@ export type DisputeRow = {
   outcome: string;
   buyer: string;
   buyerMessage: string;
+  /** PayPal lists accept_claim among this case's allowed actions (read from the case details). */
+  canAcceptClaim: boolean;
 };
 
 export type CatalogRow = {
@@ -214,7 +216,9 @@ export async function fetchDisputes(): Promise<DisputeRow[]> {
   return (res.items ?? []).map((d) => {
     const amount = rec(d.dispute_amount);
     const responseDue = str(d.seller_response_due_date);
-    const detail = details.get(str(d.dispute_id)) ?? d;
+    const fetched = details.get(str(d.dispute_id));
+    const detail = fetched ?? d;
+    const actions = ((detail.links as AnyRecord[] | undefined) ?? []).map((link) => str(link.rel));
     const txs = (detail.disputed_transactions as AnyRecord[] | undefined) ?? [];
     const messages = (detail.messages as AnyRecord[] | undefined) ?? [];
     const buyerMessage = messages.find((m) => str(m.posted_by) === "BUYER");
@@ -233,6 +237,7 @@ export async function fetchDisputes(): Promise<DisputeRow[]> {
       outcome: str(rec(d.dispute_outcome).outcome_code),
       buyer: str(rec(txs[0]?.buyer).name),
       buyerMessage: str(buyerMessage?.content).trim(),
+      canAcceptClaim: actions.includes("accept_claim"),
     };
   });
 }
