@@ -273,6 +273,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           rowHeight={view === "invoices" || view === "transactions" ? 58 : undefined}
           loading={loading && rows.length === 0}
           animateRows
+          scrollbarWidth={10}
           onGridReady={onGridReady}
           onModelUpdated={(e) => updateContext(e.api)}
           onRowClicked={(e) => {

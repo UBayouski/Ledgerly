@@ -30,9 +30,9 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
   const cacheRef = useRef(cache);
   cacheRef.current = cache;
 
-  const reload = useCallback(async (v: ViewId, force = false): Promise<{ rows: Row[]; ok: boolean }> => {
-    const hit = cacheRef.current[v];
-    if (hit && !force) return { rows: hit.rows, ok: true };
+  const inflight = useRef<Partial<Record<ViewId, Promise<{ rows: Row[]; ok: boolean }>>>>({});
+
+  const fetchView = useCallback(async (v: ViewId): Promise<{ rows: Row[]; ok: boolean }> => {
     const version = (requestVersions.current[v] ?? 0) + 1;
     requestVersions.current[v] = version;
     setLoading((l) => ({ ...l, [v]: true }));
@@ -54,6 +54,17 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
     }
   }, []);
 
+  // Share an in-flight load, so a tab click during the background prefetch doesn't fetch twice.
+  const reload = useCallback(async (v: ViewId, force = false): Promise<{ rows: Row[]; ok: boolean }> => {
+    const hit = cacheRef.current[v];
+    if (hit && !force) return { rows: hit.rows, ok: true };
+    const running = inflight.current[v];
+    if (running && !force) return running;
+    const task = fetchView(v).finally(() => { if (inflight.current[v] === task) delete inflight.current[v]; });
+    inflight.current[v] = task;
+    return task;
+  }, [fetchView]);
+
   const load = useCallback(async (v: ViewId, force = false) => (await reload(v, force)).rows, [reload]);
 
   const afterActions = useCallback((names: string[]): Promise<boolean> => {
@@ -72,6 +83,15 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
   useEffect(() => {
     void load(view);
   }, [view, load]);
+
+  // Load the other tabs in the background after the first one, so every tab shows its count.
+  useEffect(() => {
+    let cancelled = false;
+    void load("invoices").then(() => {
+      if (!cancelled) VIEWS.forEach((v) => void load(v));
+    });
+    return () => { cancelled = true; };
+  }, [load]);
 
   // Apply a pending grid command once the target view's grid has mounted with data.
   useEffect(() => {

@@ -376,7 +376,39 @@ code {
   height: 100%;
 }
 .grid-body :is(.ag-body-viewport, .ag-body-vertical-scroll-viewport, .ag-body-horizontal-scroll-viewport) {
-  scrollbar-color: var(--ink-3) var(--paper);
+  scrollbar-width: thin;
+  scrollbar-color: #b3bccb transparent;
+}
+/* Same shape as the copilot's scrollbar (rounded thumb, no arrows), tinted for the light grid. */
+@supports selector(::-webkit-scrollbar) {
+  .grid-body :is(.ag-body-viewport, .ag-body-vertical-scroll-viewport, .ag-body-horizontal-scroll-viewport) {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+  .grid-body ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .grid-body ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .grid-body ::-webkit-scrollbar-thumb {
+    background: #b3bccb;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 8px;
+  }
+  .grid-body ::-webkit-scrollbar-thumb:hover {
+    background: #8793a6;
+    background-clip: padding-box;
+  }
+  .grid-body ::-webkit-scrollbar-button,
+  .grid-body ::-webkit-scrollbar-corner {
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
+  }
 }
 .grid-body > .grid-empty-layer {
   position: absolute;
