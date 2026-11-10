@@ -13,11 +13,12 @@ import {
   type IRowNode,
   type ICellRendererParams,
 } from "ag-grid-community";
-import type { InvoiceRow, Row } from "@/lib/data";
+import type { InvoiceRow, Row, TransactionRow } from "@/lib/data";
 import type { ViewId } from "@/lib/tools";
 import { COLUMNS, NUMBER_FIELDS, VIEW_LABELS } from "./columns";
 import { describeGrid, type GridContext } from "./grid-context";
 import { InvoiceDetails } from "./InvoiceDetails";
+import { TransactionDetails } from "./TransactionDetails";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -97,9 +98,12 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
   const [quickFilter, setQuickFilter] = useState("");
   const [allColumns, setAllColumns] = useState(false);
   const [context, setContext] = useState<GridContext | null>(null);
-  const [invoiceId, setInvoiceId] = useState<string | null>(null);
-  const closeInvoice = useCallback(() => setInvoiceId(null), []);
-  const invoice = view === "invoices" ? rows.find((row): row is InvoiceRow => "due" in row && row.id === invoiceId) : undefined;
+  // Row id of the record whose details panel is open (invoices and transactions have one).
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const closeDetails = useCallback(() => setDetailId(null), []);
+  const hasDetails = view === "invoices" || view === "transactions";
+  const invoice = view === "invoices" ? rows.find((row): row is InvoiceRow => "due" in row && row.id === detailId) : undefined;
+  const transaction = view === "transactions" ? rows.find((row): row is TransactionRow => "eventCode" in row && row.id === detailId) : undefined;
   const highlight = useRef<Set<string>>(new Set());
 
   const columnDefs = useMemo<ColDef[]>(() => COLUMNS[view].map((column) => {
@@ -109,7 +113,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
         className: "link invoice-number-link",
         "aria-label": `View invoice ${p.value || p.data?.id} details`,
         "aria-haspopup": "dialog",
-        onClick: () => { if (p.data) setInvoiceId(p.data.id); },
+        onClick: () => { if (p.data) setDetailId(p.data.id); },
       }, p.value || "View invoice"),
     };
     return column.hide ? { ...column, hide: !allColumns } : column;
@@ -262,7 +266,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
           getRowId={(p) => String((p.data as Row).id)}
-          rowSelection={{ mode: "multiRow", checkboxes: true, headerCheckbox: true, enableClickSelection: view !== "invoices" }}
+          rowSelection={{ mode: "multiRow", checkboxes: true, headerCheckbox: true, enableClickSelection: !hasDetails }}
           selectionColumnDef={{ width: 42, minWidth: 42, maxWidth: 42, resizable: false, cellClass: "invoice-selection-cell" }}
           quickFilterText={quickFilter}
           includeHiddenColumnsInQuickFilter
@@ -272,20 +276,20 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           onGridReady={onGridReady}
           onModelUpdated={(e) => updateContext(e.api)}
           onRowClicked={(e) => {
-            if (view !== "invoices" || !e.data) return;
+            if (!hasDetails || !e.data) return;
             const target = e.event?.target;
             if (target instanceof Element && target.closest("button, a, input, .ag-selection-checkbox, .invoice-selection-cell")) return;
-            setInvoiceId((e.data as InvoiceRow).id);
+            setDetailId((e.data as Row).id);
           }}
           onCellKeyDown={(e) => {
-            if (view !== "invoices" || !e.data || (e.event as KeyboardEvent | undefined)?.key !== "Enter") return;
+            if (!hasDetails || !e.data || (e.event as KeyboardEvent | undefined)?.key !== "Enter") return;
             if (!("column" in e) || e.column?.getColId() === "ag-Grid-SelectionColumn") return;
-            setInvoiceId((e.data as InvoiceRow).id);
+            setDetailId((e.data as Row).id);
           }}
           onSelectionChanged={(e) => onSelectionChange((e.api.getSelectedRows() as Row[]).map((r) => r.id))}
           rowClassRules={{
             "row-highlight": (p) => highlight.current.has(String((p.data as Row | undefined)?.id)),
-            "invoice-row": () => view === "invoices",
+            "invoice-row": () => hasDetails,
             "tall-row": () => view === "invoices" || view === "transactions",
           }}
           suppressOverlays={["noRows", "noMatchingRows"]}
@@ -296,8 +300,12 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           </div>
         )}
       </div>
-      {invoice && <InvoiceDetails invoice={invoice} onClose={closeInvoice} onAsk={(prompt) => {
-        setInvoiceId(null);
+      {invoice && <InvoiceDetails invoice={invoice} onClose={closeDetails} onAsk={(prompt) => {
+        setDetailId(null);
+        window.dispatchEvent(new CustomEvent("ledgerly:prompt", { detail: prompt }));
+      }} />}
+      {transaction && <TransactionDetails transaction={transaction} onClose={closeDetails} onAsk={(prompt) => {
+        setDetailId(null);
         window.dispatchEvent(new CustomEvent("ledgerly:prompt", { detail: prompt }));
       }} />}
     </div>

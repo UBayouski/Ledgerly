@@ -9,6 +9,7 @@ import { Grid, type GridHandle, type ShowCommand } from "./Grid";
 import { VIEW_LABELS } from "./columns";
 import type { GridContext } from "./grid-context";
 import { affectedViews } from "@/lib/tool-policy";
+import { ResizableWorkspace } from "./ResizableWorkspace";
 
 type Cache = Partial<Record<ViewId, { rows: Row[]; fetchedAt: string }>>;
 
@@ -158,7 +159,7 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
       />
 
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
-      <div className="workspace">
+      <ResizableWorkspace>
         <section className="panel">
           <nav className="tabs" aria-label="Record views">
             {VIEWS.map((v) => (
@@ -197,7 +198,7 @@ export function Dashboard({ sandbox, modelLabel }: { sandbox: boolean; modelLabe
           )}
         </section>
         <Chat controller={controller} modelLabel={modelLabel} loading={Boolean(loading[view])} />
-      </div>
+      </ResizableWorkspace>
     </div>
   );
 }

@@ -55,7 +55,7 @@ export const NUMBER_FIELDS: Record<ViewId, Set<string>> = {
 export const COLUMNS: Record<ViewId, ColDef[]> = {
   transactions: [
     { field: "date", headerName: "Date (UTC)", valueFormatter: dateTime, width: 160, sort: "desc" },
-    { field: "kind", headerName: "Type", width: 130 },
+    { field: "kind", headerName: "Type", width: 172 },
     { field: "statusLabel", headerName: "Status", width: 104, valueFormatter: statusLabel, cellRenderer: badge },
     { field: "payerName", headerName: "Customer", flex: 1, minWidth: 140,
       cellRenderer: (p: ICellRendererParams<TransactionRow>) => createElement("div", { className: "invoice-customer" },
