@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import type { ColDef, ICellRendererParams, ValueFormatterParams } from "ag-grid-community";
-import type { InvoiceRow, TransactionRow } from "@/lib/data";
+import type { CatalogRow, DisputeRow, InvoiceRow, TransactionRow } from "@/lib/data";
 import type { ViewId } from "@/lib/tools";
 
 export function formatMoney(value: number | string, currency = "USD") {
@@ -32,6 +32,21 @@ const statusLabel = (p: ValueFormatterParams) => {
   const s = String(v).replace(/_/g, " ").toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
+
+/** Short grid labels for PayPal's dispute reason codes; the panel and tooltip keep the full wording. */
+export const DISPUTE_REASONS: Record<string, string> = {
+  MERCHANDISE_OR_SERVICE_NOT_RECEIVED: "Item not received",
+  MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED: "Not as described",
+  UNAUTHORISED: "Unauthorized payment",
+  CREDIT_NOT_PROCESSED: "Credit not processed",
+  DUPLICATE_TRANSACTION: "Duplicate charge",
+  INCORRECT_AMOUNT: "Incorrect amount",
+  PAYMENT_BY_OTHER_MEANS: "Paid another way",
+  CANCELED_RECURRING_BILLING: "Cancelled subscription",
+  PROBLEM_WITH_REMITTANCE: "Remittance problem",
+  OTHER: "Other",
+};
+const disputeReason = (value: unknown) => DISPUTE_REASONS[String(value)] ?? statusLabel({ value } as ValueFormatterParams);
 
 const badge = (p: ICellRendererParams) => p.value ? createElement("span", {
   className: `invoice-badge status-${String(p.value).toLowerCase().replace(/\s+/g, "-")}`,
@@ -104,12 +119,21 @@ export const COLUMNS: Record<ViewId, ColDef[]> = {
     { field: "id", headerName: "Invoice ID", width: 200, hide: true },
   ],
   disputes: [
-    { field: "id", headerName: "Case ID", width: 168 },
-    { field: "buyer", headerName: "Buyer", width: 130, valueFormatter: (p) => p.value || "—" },
+    // Buyer with the case ID underneath, like a customer's email; the ID column stays for search.
+    { field: "buyer", headerName: "Buyer", width: 190, tooltipField: "id",
+      cellRenderer: (p: ICellRendererParams<DisputeRow>) => createElement("div", { className: "invoice-customer" },
+        createElement("span", null, p.value || "Unknown buyer"),
+        createElement("span", { className: "invoice-email" }, p.data?.id)) },
+    { field: "id", headerName: "Case ID", width: 168, hide: true },
     { field: "created", headerName: "Opened (UTC)", valueFormatter: dateTime, width: 170, hide: true },
     { field: "status", headerName: "Status", width: 206, valueFormatter: statusLabel, cellRenderer: badge },
     { field: "stage", headerName: "Stage", width: 140, valueFormatter: statusLabel, hide: true },
-    { field: "reason", headerName: "Reason", flex: 1, minWidth: 200, valueFormatter: statusLabel, tooltipValueGetter: (p) => statusLabel({ value: p.value } as ValueFormatterParams) },
+    { field: "reason", headerName: "Reason", flex: 1, minWidth: 200, valueFormatter: (p) => disputeReason(p.value),
+      tooltipValueGetter: (p) => [statusLabel({ value: p.value } as ValueFormatterParams), (p.data as DisputeRow | undefined)?.buyerMessage].filter(Boolean).join(": "),
+      // Second line: the buyer's own words, like the email under a customer's name.
+      cellRenderer: (p: ICellRendererParams<DisputeRow>) => createElement("div", { className: "invoice-customer" },
+        createElement("span", null, disputeReason(p.value)),
+        createElement("span", { className: "invoice-email" }, p.data?.buyerMessage || "No message from the buyer")) },
     { field: "amount", headerName: "Amount", ...num, width: 110 },
     { field: "responseDue", headerName: "Respond by", headerTooltip: "Response deadline (UTC)", valueFormatter: dateTime, width: 152, sort: "asc",
       comparator: (a, b, nodeA, nodeB) => {
@@ -137,7 +161,10 @@ export const COLUMNS: Record<ViewId, ColDef[]> = {
   ],
   catalog: [
     { field: "kind", headerName: "Kind", width: 100, valueFormatter: statusLabel },
-    { field: "name", headerName: "Name", flex: 1, minWidth: 200, sort: "asc" },
+    { field: "name", headerName: "Name", flex: 1, minWidth: 200, sort: "asc", tooltipField: "description",
+      cellRenderer: (p: ICellRendererParams<CatalogRow>) => createElement("div", { className: "invoice-customer" },
+        createElement("span", null, p.value),
+        createElement("span", { className: "invoice-email" }, p.data?.description || "No description")) },
     { field: "status", headerName: "Status", width: 120, valueFormatter: statusLabel, cellRenderer: badge },
     { field: "price", headerName: "Price", ...num },
     { field: "interval", headerName: "Interval", width: 120 },

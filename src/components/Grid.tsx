@@ -273,7 +273,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           selectionColumnDef={{ width: 42, minWidth: 42, maxWidth: 42, resizable: false, cellClass: "invoice-selection-cell" }}
           quickFilterText={quickFilter}
           includeHiddenColumnsInQuickFilter
-          rowHeight={view === "invoices" || view === "transactions" ? 58 : undefined}
+          rowHeight={58}
           loading={loading && rows.length === 0}
           animateRows
           scrollbarWidth={10}
@@ -294,7 +294,7 @@ export const Grid = forwardRef<GridHandle, Props>(function Grid({ view, rows, lo
           rowClassRules={{
             "row-highlight": (p) => highlight.current.has(String((p.data as Row | undefined)?.id)),
             "invoice-row": () => true,
-            "tall-row": () => view === "invoices" || view === "transactions",
+            "tall-row": () => true,
           }}
           suppressOverlays={["noRows", "noMatchingRows"]}
         />

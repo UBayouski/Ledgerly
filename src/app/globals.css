@@ -1914,7 +1914,7 @@ code {
   }
 }
 
-/* Invoice and transaction rows are 58px; centre single-line cells to match the two-line customer block */
+/* All rows are 58px; centre single-line cells to match the two-line cells (customer, reason, name) */
 .tall-row .ag-cell {
   line-height: 56px;
 }

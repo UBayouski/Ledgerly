@@ -28,8 +28,16 @@ test("missing deadlines and resolved cases never display a misleading zero days 
   assert.equal(days.cellClass(urgent).includes("status-overdue"), true);
 });
 
-test("disputes show the case ID and buyer by default", () => {
+test("disputes show the buyer with the case ID underneath, and keep the ID searchable", () => {
   const visible = COLUMNS.disputes.filter((column) => !column.hide).map((column) => column.field);
-  assert.ok(visible.includes("id"));
   assert.ok(visible.includes("buyer"));
+  assert.ok(COLUMNS.disputes.some((column) => column.field === "id"));
+  const buyer = COLUMNS.disputes.find((column) => column.field === "buyer");
+  assert.equal(typeof buyer.cellRenderer, "function");
+});
+
+test("dispute reasons use short labels and fall back to readable text", () => {
+  const reason = COLUMNS.disputes.find((column) => column.field === "reason");
+  assert.equal(reason.valueFormatter({ value: "MERCHANDISE_OR_SERVICE_NOT_RECEIVED" }), "Item not received");
+  assert.equal(reason.valueFormatter({ value: "SOME_NEW_REASON" }), "Some new reason");
 });
