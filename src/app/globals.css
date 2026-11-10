@@ -379,31 +379,44 @@ code {
   scrollbar-width: thin;
   scrollbar-color: #b3bccb transparent;
 }
+.invoice-details-scroll,
+.tabs {
+  scrollbar-color: #b3bccb transparent;
+}
 /* Same shape as the copilot's scrollbar (rounded thumb, no arrows), tinted for the light grid. */
 @supports selector(::-webkit-scrollbar) {
   .grid-body :is(.ag-body-viewport, .ag-body-vertical-scroll-viewport, .ag-body-horizontal-scroll-viewport) {
     scrollbar-width: auto;
     scrollbar-color: auto;
   }
+  .invoice-details-scroll,
+  .tabs {
+    scrollbar-color: auto;
+  }
   .grid-body ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
-  .grid-body ::-webkit-scrollbar-track {
+  .grid-body ::-webkit-scrollbar-track,
+  :is(.invoice-details-scroll, .tabs)::-webkit-scrollbar-track {
     background: transparent;
   }
-  .grid-body ::-webkit-scrollbar-thumb {
+  .grid-body ::-webkit-scrollbar-thumb,
+  :is(.invoice-details-scroll, .tabs)::-webkit-scrollbar-thumb {
     background: #b3bccb;
     border: 2px solid transparent;
     background-clip: padding-box;
     border-radius: 8px;
   }
-  .grid-body ::-webkit-scrollbar-thumb:hover {
+  .grid-body ::-webkit-scrollbar-thumb:hover,
+  :is(.invoice-details-scroll, .tabs)::-webkit-scrollbar-thumb:hover {
     background: #8793a6;
     background-clip: padding-box;
   }
   .grid-body ::-webkit-scrollbar-button,
-  .grid-body ::-webkit-scrollbar-corner {
+  .grid-body ::-webkit-scrollbar-corner,
+  :is(.invoice-details-scroll, .tabs)::-webkit-scrollbar-button,
+  :is(.invoice-details-scroll, .tabs)::-webkit-scrollbar-corner {
     display: none;
     width: 0;
     height: 0;
@@ -1373,37 +1386,38 @@ code {
   min-width: 0;
   gap: 12px;
 }
-.chat :is(.tool-body, .approval) pre {
+.chat :is(.tool-body, .approval) pre,
+.chat-input textarea {
   color-scheme: dark;
   scrollbar-width: thin;
   scrollbar-color: #526078 var(--ink-surface);
 }
 @supports selector(::-webkit-scrollbar) {
-  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre) {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre, .chat-input textarea) {
     scrollbar-width: auto;
     scrollbar-color: auto;
   }
-  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre, .chat-input textarea)::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar-track {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre, .chat-input textarea)::-webkit-scrollbar-track {
     background: var(--ink-surface);
   }
-  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar-thumb {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre, .chat-input textarea)::-webkit-scrollbar-thumb {
     background: #526078;
     border: 2px solid var(--ink-surface);
     border-radius: 8px;
   }
-  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar-thumb:hover {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre, .chat-input textarea)::-webkit-scrollbar-thumb:hover {
     background: #8190a7;
   }
-  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar-button {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre, .chat-input textarea)::-webkit-scrollbar-button {
     display: none;
     width: 0;
     height: 0;
   }
-  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre)::-webkit-scrollbar-corner {
+  :is(.chat-scroll, .chat .tool-body pre, .chat .approval pre, .chat-input textarea)::-webkit-scrollbar-corner {
     background: var(--ink-surface);
   }
 }
