@@ -47,7 +47,7 @@ pnpm dev                        # http://localhost:3000
 Sandbox notes:
 
 - Transaction Search returns payments made to the sandbox business account. A fresh sandbox has none. The seed script tries two direct card orders, which need "Advanced Credit and Debit Card Payments" enabled on the sandbox app. Any sandbox checkout against the same business account (for example from the companion Errandly project) also shows up after a few minutes.
-- Disputes cannot be created through the API. The Disputes view will be empty in a fresh sandbox; the copilot still handles the flow when disputes exist.
+- A fresh sandbox has no disputes. To test the flow, pay the sandbox business from a sandbox personal account with PayPal (goods or services), then open a case from that buyer's Resolution Center; it shows up in the Disputes view within minutes. (The API route for creating test disputes needs a scope PayPal grants on request.)
 - `get_merchant_insights` is not available in sandbox and is disabled.
 
 ## Deploy
@@ -60,7 +60,8 @@ One click on Render with `render.yaml` (set the three secret env vars), or `dock
 2. Click "Show in grid" on an urgent item: the Invoices view filters and flashes the rows.
 3. Ask "Draft reminders for every invoice more than 14 days overdue." Approve one reminder, deny another, watch the grid refresh.
 4. Ask "Summarize the last 30 days and the fees I paid." The copilot reads the transactions snapshot and answers with numbers.
-5. Select rows with the checkboxes and click "Ask copilot about selection."
+5. Select rows with the checkboxes and click "Ask the copilot about these rows."
+6. Click any row to open its details panel. On an open dispute, "Accept claim in Copilot" prepares the action, and it waits for your approval like every other change.
 
 ## License
 
