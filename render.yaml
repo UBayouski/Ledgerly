@@ -2,7 +2,7 @@ services:
   - type: web
     name: ledgerly
     runtime: node
-    plan: free
+    plan: starter
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
     startCommand: pnpm start
     healthCheckPath: /api/health
